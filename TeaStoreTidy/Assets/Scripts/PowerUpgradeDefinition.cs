@@ -2,7 +2,8 @@ using UnityEngine;
 
 public enum PowerUpgradeEffect
 {
-    IncreaseInventoryCapacity
+    IncreaseInventoryCapacity,
+    ScentTrail
 }
 
 [CreateAssetMenu(menuName = "Tea Store Tidy/Power Upgrade", fileName = "NewPowerUpgrade")]
@@ -15,4 +16,6 @@ public sealed class PowerUpgradeDefinition : ScriptableObject
     [Min(1)] public int amountPerPurchase = 1;
     [Min(1)] public int startingCost = 1;
     [Min(1f)] public float costMultiplier = 1.5f;
+    [Tooltip("One-time unlocks cannot be purchased again after the first purchase.")]
+    public bool oneTimeUnlock;
 }

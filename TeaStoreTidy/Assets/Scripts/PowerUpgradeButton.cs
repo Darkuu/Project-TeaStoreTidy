@@ -38,10 +38,13 @@ public sealed class PowerUpgradeButton : MonoBehaviour
         definition = upgrade;
         tracker = progressTracker;
 
+        bool alreadyUnlocked = upgrade.oneTimeUnlock && level > 0;
         if (label != null)
-            label.text = $"{upgrade.displayName}\nLevel {level} - {cost} point{(cost == 1 ? "" : "s")}";
+            label.text = alreadyUnlocked
+                ? $"{upgrade.displayName}\nUNLOCKED"
+                : $"{upgrade.displayName}\nLevel {level} - {cost} point{(cost == 1 ? "" : "s")}";
         if (button != null)
-            button.interactable = points >= cost;
+            button.interactable = !alreadyUnlocked && points >= cost;
     }
 
     private void Purchase()

@@ -48,6 +48,7 @@ public sealed class PlacementProgressTracker : MonoBehaviour
         if (playerController != null)
             playerController.SetPowersMenuOpen(false);
         BuildPowerButtons();
+        ApplyUnlockedPowers();
         RefreshProgress();
         UpdatePowersUI();
     }
@@ -91,7 +92,7 @@ public sealed class PlacementProgressTracker : MonoBehaviour
             return;
 
         SavedPowerProgress state = GetPowerProgress(upgrade);
-        if (powerPoints < state.nextCost)
+        if (powerPoints < state.nextCost || (upgrade.oneTimeUnlock && state.level > 0))
             return;
 
         if (upgrade.effect == PowerUpgradeEffect.IncreaseInventoryCapacity)
@@ -102,6 +103,16 @@ public sealed class PlacementProgressTracker : MonoBehaviour
                 return;
 
             playerInventory.IncreaseInventoryCapacity(upgrade.amountPerPurchase);
+        }
+        else if (upgrade.effect == PowerUpgradeEffect.ScentTrail)
+        {
+            ScentTrailPower scentPower = FindFirstObjectByType<ScentTrailPower>();
+            if (scentPower == null)
+            {
+                Debug.LogError("Add ScentTrailPower to the player before unlocking this power.", this);
+                return;
+            }
+            scentPower.SetUnlocked(true);
         }
 
         powerPoints -= state.nextCost;
@@ -164,7 +175,24 @@ public sealed class PlacementProgressTracker : MonoBehaviour
             }
         }
         BuildPowerButtons();
+        ApplyUnlockedPowers();
         UpdatePowersUI();
+    }
+
+    private void ApplyUnlockedPowers()
+    {
+        ScentTrailPower scentPower = FindFirstObjectByType<ScentTrailPower>();
+        if (scentPower == null || availablePowers == null)
+            return;
+
+        foreach (PowerUpgradeDefinition upgrade in availablePowers)
+        {
+            if (upgrade == null || upgrade.effect != PowerUpgradeEffect.ScentTrail)
+                continue;
+
+            SavedPowerProgress state = GetPowerProgress(upgrade);
+            scentPower.SetUnlocked(state.level > 0);
+        }
     }
 
     private SavedPowerProgress GetPowerProgress(PowerUpgradeDefinition upgrade)

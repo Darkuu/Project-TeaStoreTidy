@@ -168,6 +168,12 @@ public sealed class PlayerInventory : MonoBehaviour
     public int SelectedItemIndex => selectedItemIndex;
     public int InventoryCapacity => inventoryCapacity;
     public Quaternion CameraLocalRotation => cameraTransform.localRotation;
+    public Transform CameraTransform => cameraTransform;
+    public InputActionAsset InputActions => inputActions;
+    public CarryableItem SelectedItem => selectedItemIndex >= 0 && selectedItemIndex < carriedItems.Count
+        ? carriedItems[selectedItemIndex]
+        : null;
+    public bool IsCarrying(CarryableItem item) => carriedItems.Contains(item);
 
     public void IncreaseInventoryCapacity(int amount = 1)
     {
