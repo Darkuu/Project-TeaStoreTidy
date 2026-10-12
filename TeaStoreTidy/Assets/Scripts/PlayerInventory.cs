@@ -15,7 +15,7 @@ public sealed class PlayerInventory : MonoBehaviour
     [Header("Interaction")]
     [SerializeField, Min(0.1f)] private float interactDistance = 3f;
     [SerializeField] private LayerMask interactLayers = ~0;
-    [SerializeField, Range(1, 6)] private int inventoryCapacity = 6;
+    [SerializeField, Min(1)] private int inventoryCapacity = 6;
     [SerializeField, Min(0f)] private float dropForwardDistance = 0.8f;
     [SerializeField, Min(0f)] private float dropDownOffset = 0.5f;
 
@@ -71,6 +71,10 @@ public sealed class PlayerInventory : MonoBehaviour
 
     private void Update()
     {
+        FirstPersonController controller = GetComponent<FirstPersonController>();
+        if (controller != null && controller.PowersMenuOpen)
+            return;
+
         if (carriedItems.Count == 0)
             selectedItemIndex = -1;
 
@@ -162,7 +166,19 @@ public sealed class PlayerInventory : MonoBehaviour
     }
 
     public int SelectedItemIndex => selectedItemIndex;
+    public int InventoryCapacity => inventoryCapacity;
     public Quaternion CameraLocalRotation => cameraTransform.localRotation;
+
+    public void IncreaseInventoryCapacity(int amount = 1)
+    {
+        inventoryCapacity += Mathf.Max(1, amount);
+    }
+
+    public void RestoreInventoryCapacity(int capacity)
+    {
+        if (capacity > 0)
+            inventoryCapacity = capacity;
+    }
 
     public void RestoreInventory(List<string> itemIds, int savedSelectedIndex,
         Dictionary<string, CarryableItem> itemsById)

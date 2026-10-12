@@ -1,8 +1,10 @@
+using System;
 using UnityEngine;
 
 /// <summary>A tagged shelf or storage area with a configurable grid of item slots.</summary>
 public sealed class PlacementSpot : MonoBehaviour
 {
+    public static event Action<PlacementSpot> Completed;
     [Header("Grid")]
     [SerializeField, Min(1)] private int maxItems = 6;
     [SerializeField, Min(1)] private int columns = 3;
@@ -73,7 +75,10 @@ public sealed class PlacementSpot : MonoBehaviour
 
         Vector3 slotOffset = GetSlotOffset(slotIndex, columnCount);
         Vector3 worldPosition = origin.TransformPoint(slotOffset);
+        bool wasComplete = IsComplete;
         item.Place(transform, worldPosition, origin.rotation);
+        if (!wasComplete && IsComplete)
+            Completed?.Invoke(this);
         return true;
     }
 

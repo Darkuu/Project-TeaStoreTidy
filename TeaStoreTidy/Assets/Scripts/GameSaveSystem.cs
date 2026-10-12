@@ -37,6 +37,10 @@ public sealed class GameSaveData
     public Vector3 playerPosition;
     public Quaternion playerRotation;
     public Quaternion cameraLocalRotation;
+    public int inventoryCapacity;
+    public int powerPoints;
+    public int nextInventoryUpgradeCost = 1;
+    public List<SavedPowerProgress> powerProgress = new List<SavedPowerProgress>();
 }
 
 /// <summary>Saves scene object state, player view, and inventory to persistent storage.</summary>
@@ -49,6 +53,7 @@ public sealed class GameSaveSystem : MonoBehaviour
     private readonly Dictionary<string, Transform> transformsById = new Dictionary<string, Transform>();
     private Transform[] sceneTransforms;
     private PlayerInventory inventory;
+    private PlacementProgressTracker progressTracker;
     private float nextAutosaveTime;
 
     private string SavePath => Path.Combine(Application.persistentDataPath, SaveFileName);
@@ -56,6 +61,7 @@ public sealed class GameSaveSystem : MonoBehaviour
     private void Awake()
     {
         inventory = GetComponent<PlayerInventory>();
+        progressTracker = FindFirstObjectByType<PlacementProgressTracker>();
         sceneTransforms = FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None);
 
         foreach (Transform sceneTransform in sceneTransforms)
@@ -110,6 +116,9 @@ public sealed class GameSaveSystem : MonoBehaviour
             playerPosition = transform.position,
             playerRotation = transform.rotation,
             cameraLocalRotation = inventory != null ? inventory.CameraLocalRotation : Quaternion.identity,
+            inventoryCapacity = inventory != null ? inventory.InventoryCapacity : 0,
+            powerPoints = progressTracker != null ? progressTracker.PowerPoints : 0,
+            powerProgress = progressTracker != null ? progressTracker.GetSavedPowerProgress() : new List<SavedPowerProgress>(),
             carriedItemIds = inventory != null ? inventory.GetCarriedItemIds() : new List<string>(),
             selectedItemIndex = inventory != null ? inventory.SelectedItemIndex : -1
         };
@@ -283,9 +292,13 @@ public sealed class GameSaveSystem : MonoBehaviour
             if (inventory != null)
             {
                 transform.SetPositionAndRotation(data.playerPosition, data.playerRotation);
+                inventory.RestoreInventoryCapacity(data.inventoryCapacity);
                 inventory.RestoreCameraLocalRotation(data.cameraLocalRotation);
                 inventory.RestoreInventory(data.carriedItemIds, data.selectedItemIndex, itemsById);
             }
+
+            if (progressTracker != null)
+                progressTracker.RestorePowerProgress(data.powerPoints, data.powerProgress, data.nextInventoryUpgradeCost);
         }
         catch (Exception exception)
         {

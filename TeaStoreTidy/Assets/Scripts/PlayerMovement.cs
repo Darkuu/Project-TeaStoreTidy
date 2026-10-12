@@ -23,6 +23,8 @@ public sealed class FirstPersonController : MonoBehaviour
     private InputAction lookAction;
     private float verticalVelocity;
     private float cameraPitch;
+    private bool powersMenuOpen;
+    public bool PowersMenuOpen => powersMenuOpen;
 
     private void Awake()
     {
@@ -81,14 +83,24 @@ public sealed class FirstPersonController : MonoBehaviour
             Cursor.visible = true;
         }
 
-        if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+        if (!powersMenuOpen && Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
         }
 
+        if (powersMenuOpen)
+            return;
+
         Look();
         Move();
+    }
+
+    public void SetPowersMenuOpen(bool isOpen)
+    {
+        powersMenuOpen = isOpen;
+        Cursor.lockState = isOpen ? CursorLockMode.None : CursorLockMode.Locked;
+        Cursor.visible = isOpen;
     }
 
     private void Look()
