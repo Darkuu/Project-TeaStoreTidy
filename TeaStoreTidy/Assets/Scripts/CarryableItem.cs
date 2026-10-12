@@ -67,8 +67,7 @@ public sealed class CarryableItem : MonoBehaviour
 
         if (body != null)
         {
-            body.linearVelocity = Vector3.zero;
-            body.angularVelocity = Vector3.zero;
+            StopMotionIfDynamic();
             body.isKinematic = true;
         }
 
@@ -90,8 +89,7 @@ public sealed class CarryableItem : MonoBehaviour
 
         if (body != null)
         {
-            body.linearVelocity = Vector3.zero;
-            body.angularVelocity = Vector3.zero;
+            StopMotionIfDynamic();
             body.isKinematic = true;
         }
 
@@ -117,8 +115,7 @@ public sealed class CarryableItem : MonoBehaviour
 
         if (body != null)
         {
-            body.linearVelocity = Vector3.zero;
-            body.angularVelocity = Vector3.zero;
+            StopMotionIfDynamic();
             body.isKinematic = true;
         }
     }
@@ -134,10 +131,19 @@ public sealed class CarryableItem : MonoBehaviour
 
         if (body != null)
         {
+            body.isKinematic = false;
             body.linearVelocity = Vector3.zero;
             body.angularVelocity = Vector3.zero;
-            body.isKinematic = false;
         }
+    }
+
+    private void StopMotionIfDynamic()
+    {
+        if (body == null || body.isKinematic)
+            return;
+
+        body.linearVelocity = Vector3.zero;
+        body.angularVelocity = Vector3.zero;
     }
 
     private void RestoreColliders()
