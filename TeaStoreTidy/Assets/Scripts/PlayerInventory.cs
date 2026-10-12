@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Rendering.HighDefinition;
-using UnityEngine.UI;
 
 /// <summary>Simple one-item carry system. Interact to pick up or place.</summary>
 public sealed class PlayerInventory : MonoBehaviour
@@ -23,11 +22,6 @@ public sealed class PlayerInventory : MonoBehaviour
     [Header("Held Item View")]
     [SerializeField] private Vector3 heldLocalPosition = new Vector3(0.35f, -0.3f, 0.7f);
     [SerializeField] private Vector3 heldLocalEulerAngles;
-
-    [Header("Progress HUD")]
-    [SerializeField] private Canvas progressCanvas;
-    [SerializeField] private Image progressPanel;
-    [SerializeField] private Text progressText;
 
     private InputAction interactAction;
     private InputAction dropAction;
@@ -59,13 +53,6 @@ public sealed class PlayerInventory : MonoBehaviour
         if (enabled && GetComponent<GameSaveSystem>() == null)
             gameObject.AddComponent<GameSaveSystem>();
 
-        if (enabled)
-        {
-            PlacementProgressTracker tracker = GetComponent<PlacementProgressTracker>();
-            if (tracker == null)
-                tracker = gameObject.AddComponent<PlacementProgressTracker>();
-            tracker.ConfigureUI(progressCanvas, progressPanel, progressText);
-        }
     }
 
     private void OnEnable()
