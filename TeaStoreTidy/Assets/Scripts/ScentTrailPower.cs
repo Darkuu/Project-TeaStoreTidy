@@ -1,6 +1,7 @@
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 
 /// <summary>Shows a temporary path to nearby unplaced objects matching the held item's tag.</summary>
 public sealed class ScentTrailPower : MonoBehaviour
@@ -8,6 +9,8 @@ public sealed class ScentTrailPower : MonoBehaviour
     [Header("Ability Display")]
     [SerializeField] private GameObject abilityPanel;
     [SerializeField] private TMP_Text abilityKeyText;
+    [Tooltip("A dark Filled Image layered over the ability icon. It drains from top to bottom during cooldown.")]
+    [SerializeField] private Image cooldownOverlay;
     [SerializeField] private string actionName = "ScentTrail";
 
     [Header("Scent Trail")]
@@ -46,11 +49,7 @@ public sealed class ScentTrailPower : MonoBehaviour
         DisableAction();
     }
 
-    private void Update()
-    {
-        if (unlocked && Time.time < nextUseTime)
-            UpdateAbilityDisplay();
-    }
+    private void Update() => UpdateCooldownOverlay();
 
     public void SetUnlocked(bool value)
     {
@@ -188,14 +187,30 @@ public sealed class ScentTrailPower : MonoBehaviour
 
     private void UpdateAbilityDisplay()
     {
-        if (abilityKeyText == null || !unlocked)
-            return;
-
         string keyName = scentAction != null ? scentAction.GetBindingDisplayString() : actionName;
         if (string.IsNullOrEmpty(keyName))
             keyName = actionName;
 
-        int seconds = Mathf.CeilToInt(nextUseTime - Time.time);
-        abilityKeyText.text = seconds > 0 ? $"{keyName} - {seconds}s" : keyName;
+        if (abilityKeyText != null && unlocked)
+            abilityKeyText.text = keyName;
+
+        UpdateCooldownOverlay();
+    }
+
+    private void UpdateCooldownOverlay()
+    {
+        if (cooldownOverlay == null)
+            return;
+
+        float remaining = Mathf.Max(0f, nextUseTime - Time.time);
+        bool isCoolingDown = unlocked && remaining > 0f;
+        float cooldownProgress = isCoolingDown && cooldownDuration > 0f
+            ? 1f - Mathf.Clamp01(remaining / cooldownDuration)
+            : 0f;
+        cooldownOverlay.type = Image.Type.Filled;
+        cooldownOverlay.fillMethod = Image.FillMethod.Vertical;
+        cooldownOverlay.fillOrigin = (int)Image.OriginVertical.Top;
+        cooldownOverlay.fillAmount = cooldownProgress;
+        cooldownOverlay.enabled = isCoolingDown;
     }
 }
