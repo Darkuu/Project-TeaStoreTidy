@@ -10,9 +10,29 @@ public sealed class CarryableItem : MonoBehaviour
     private Renderer[] itemRenderers;
     private bool[] rendererEnabledStates;
     private Rigidbody body;
+    private string persistentId;
+
+    public string PersistentId
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(persistentId))
+                persistentId = PersistentSceneId.FromTransform(transform);
+            return persistentId;
+        }
+    }
 
     private void Awake()
     {
+        CacheComponents();
+    }
+
+    private void CacheComponents()
+    {
+        if (itemTransforms != null)
+            return;
+
+        persistentId = PersistentSceneId.FromTransform(transform);
         itemColliders = GetComponentsInChildren<Collider>(true);
         itemTransforms = GetComponentsInChildren<Transform>(true);
         itemRenderers = GetComponentsInChildren<Renderer>(true);
@@ -58,7 +78,32 @@ public sealed class CarryableItem : MonoBehaviour
 
     public void Stow()
     {
+        int overlayLayer = LayerMask.NameToLayer("HeldItemOverlay");
+        if (overlayLayer >= 0)
+        {
+            foreach (Transform itemTransform in itemTransforms)
+                itemTransform.gameObject.layer = overlayLayer;
+        }
+
+        foreach (Collider itemCollider in itemColliders)
+            itemCollider.enabled = false;
+
+        if (body != null)
+        {
+            body.linearVelocity = Vector3.zero;
+            body.angularVelocity = Vector3.zero;
+            body.isKinematic = true;
+        }
+
         SetRenderersVisible(false);
+    }
+
+    public void PrepareForLoad()
+    {
+        CacheComponents();
+        RestoreColliders();
+        RestoreLayers();
+        SetRenderersVisible(true);
     }
 
     public void Place(Transform newParent, Vector3 worldPosition, Quaternion worldRotation)

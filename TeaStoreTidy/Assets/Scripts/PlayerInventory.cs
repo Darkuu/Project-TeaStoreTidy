@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Rendering.HighDefinition;
+using UnityEngine.UI;
 
 /// <summary>Simple one-item carry system. Interact to pick up or place.</summary>
 public sealed class PlayerInventory : MonoBehaviour
@@ -22,6 +23,11 @@ public sealed class PlayerInventory : MonoBehaviour
     [Header("Held Item View")]
     [SerializeField] private Vector3 heldLocalPosition = new Vector3(0.35f, -0.3f, 0.7f);
     [SerializeField] private Vector3 heldLocalEulerAngles;
+
+    [Header("Progress HUD")]
+    [SerializeField] private Canvas progressCanvas;
+    [SerializeField] private Image progressPanel;
+    [SerializeField] private Text progressText;
 
     private InputAction interactAction;
     private InputAction dropAction;
@@ -49,6 +55,17 @@ public sealed class PlayerInventory : MonoBehaviour
         }
 
         SetupHeldItemOverlay();
+
+        if (enabled && GetComponent<GameSaveSystem>() == null)
+            gameObject.AddComponent<GameSaveSystem>();
+
+        if (enabled)
+        {
+            PlacementProgressTracker tracker = GetComponent<PlacementProgressTracker>();
+            if (tracker == null)
+                tracker = gameObject.AddComponent<PlacementProgressTracker>();
+            tracker.ConfigureUI(progressCanvas, progressPanel, progressText);
+        }
     }
 
     private void OnEnable()
@@ -147,6 +164,51 @@ public sealed class PlayerInventory : MonoBehaviour
             else
                 carriedItems[i].Stow();
         }
+    }
+
+    public List<string> GetCarriedItemIds()
+    {
+        var ids = new List<string>(carriedItems.Count);
+        foreach (CarryableItem item in carriedItems)
+            ids.Add(item.PersistentId);
+        return ids;
+    }
+
+    public int SelectedItemIndex => selectedItemIndex;
+    public Quaternion CameraLocalRotation => cameraTransform.localRotation;
+
+    public void RestoreInventory(List<string> itemIds, int savedSelectedIndex,
+        Dictionary<string, CarryableItem> itemsById)
+    {
+        carriedItems.Clear();
+
+        if (itemIds != null)
+        {
+            foreach (string itemId in itemIds)
+            {
+                if (carriedItems.Count >= inventoryCapacity)
+                    break;
+
+                if (itemsById.TryGetValue(itemId, out CarryableItem item) && item != null)
+                {
+                    item.gameObject.SetActive(true);
+                    carriedItems.Add(item);
+                }
+            }
+        }
+
+        selectedItemIndex = carriedItems.Count == 0
+            ? -1
+            : Mathf.Clamp(savedSelectedIndex, 0, carriedItems.Count - 1);
+        UpdateSelectedItemView();
+    }
+
+    public void RestoreCameraLocalRotation(Quaternion localRotation)
+    {
+        cameraTransform.localRotation = localRotation;
+        FirstPersonController controller = GetComponent<FirstPersonController>();
+        if (controller != null)
+            controller.RestoreCameraRotation(localRotation);
     }
 
     private void SetupHeldItemOverlay()

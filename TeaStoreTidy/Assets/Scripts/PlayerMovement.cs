@@ -105,6 +105,16 @@ public sealed class FirstPersonController : MonoBehaviour
         cameraTransform.localRotation = Quaternion.Euler(cameraPitch, 0f, 0f);
     }
 
+    public void RestoreCameraRotation(Quaternion localRotation)
+    {
+        cameraPitch = Mathf.Clamp(
+            NormalizeAngle(localRotation.eulerAngles.x),
+            -maxLookAngle,
+            maxLookAngle
+        );
+        cameraTransform.localRotation = Quaternion.Euler(cameraPitch, 0f, 0f);
+    }
+
     private void Move()
     {
         Vector2 input = Vector2.ClampMagnitude(moveAction.ReadValue<Vector2>(), 1f);

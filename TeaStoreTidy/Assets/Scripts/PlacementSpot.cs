@@ -14,6 +14,18 @@ public sealed class PlacementSpot : MonoBehaviour
     [Tooltip("Legacy fallback for the grid origin. Prefer Grid Origin for new setups.")]
     [SerializeField] private Transform placementPoint;
 
+    private string persistentId;
+
+    public string PersistentId
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(persistentId))
+                persistentId = PersistentSceneId.FromTransform(transform);
+            return persistentId;
+        }
+    }
+
     [Header("Grid Preview")]
     [SerializeField] private bool showGridPreview = true;
     [SerializeField, Min(0.01f)] private float previewSize = 0.2f;
@@ -22,6 +34,30 @@ public sealed class PlacementSpot : MonoBehaviour
     {
         return item != null && item.CompareTag(gameObject.tag);
     }
+
+    public int SlotCount => Mathf.Max(1, maxItems);
+
+    public int FilledSlotCount
+    {
+        get
+        {
+            int filled = 0;
+            int columnCount = Mathf.Max(1, columns);
+            CarryableItem[] placedItems = GetComponentsInChildren<CarryableItem>(true);
+            Transform origin = GetGridOrigin();
+
+            for (int slot = 0; slot < SlotCount; slot++)
+            {
+                Vector3 slotPosition = GetSlotLocalPosition(slot, columnCount, origin);
+                if (IsSlotOccupied(slotPosition, placedItems, true))
+                    filled++;
+            }
+
+            return filled;
+        }
+    }
+
+    public bool IsComplete => FilledSlotCount >= SlotCount;
 
     public bool TryPlace(CarryableItem item)
     {
@@ -35,8 +71,7 @@ public sealed class PlacementSpot : MonoBehaviour
         int columnCount = Mathf.Max(1, columns);
         int row = slotIndex / columnCount;
         int column = slotIndex % columnCount;
-        Transform origin = gridOrigin != null ? gridOrigin :
-            (placementPoint != null ? placementPoint : transform);
+        Transform origin = GetGridOrigin();
 
         Vector3 slotOffset = new Vector3(column * spacing.x, 0f, row * spacing.y);
         Vector3 worldPosition = origin.TransformPoint(slotOffset);
@@ -49,34 +84,46 @@ public sealed class PlacementSpot : MonoBehaviour
         int capacity = Mathf.Max(1, maxItems);
         int columnCount = Mathf.Max(1, columns);
         CarryableItem[] placedItems = GetComponentsInChildren<CarryableItem>(true);
-        Transform origin = gridOrigin != null ? gridOrigin :
-            (placementPoint != null ? placementPoint : transform);
+        Transform origin = GetGridOrigin();
 
         for (int slot = 0; slot < capacity; slot++)
         {
-            int row = slot / columnCount;
-            int column = slot % columnCount;
-            Vector3 offset = new Vector3(column * spacing.x, 0f, row * spacing.y);
-            Vector3 slotPosition = transform.InverseTransformPoint(origin.TransformPoint(offset));
-
-            bool occupied = false;
-            foreach (CarryableItem placedItem in placedItems)
-            {
-                // Placed items are parented directly to this spot. Reparenting a picked-up item
-                // to the player's hold point automatically frees its slot.
-                if (placedItem.transform.parent == transform &&
-                    Vector3.SqrMagnitude(placedItem.transform.localPosition - slotPosition) < 0.0001f)
-                {
-                    occupied = true;
-                    break;
-                }
-            }
-
-            if (!occupied)
+            Vector3 slotPosition = GetSlotLocalPosition(slot, columnCount, origin);
+            if (!IsSlotOccupied(slotPosition, placedItems, false))
                 return slot;
         }
 
         return -1;
+    }
+
+    private Transform GetGridOrigin()
+    {
+        return gridOrigin != null ? gridOrigin :
+            (placementPoint != null ? placementPoint : transform);
+    }
+
+    private Vector3 GetSlotLocalPosition(int slot, int columnCount, Transform origin)
+    {
+        int row = slot / columnCount;
+        int column = slot % columnCount;
+        Vector3 offset = new Vector3(column * spacing.x, 0f, row * spacing.y);
+        return transform.InverseTransformPoint(origin.TransformPoint(offset));
+    }
+
+    private bool IsSlotOccupied(Vector3 slotPosition, CarryableItem[] placedItems, bool matchingTagOnly)
+    {
+        foreach (CarryableItem item in placedItems)
+        {
+            // Placement reparents items to this spot; picking them up removes them from its children.
+            if (item.transform.parent != transform ||
+                Vector3.SqrMagnitude(item.transform.localPosition - slotPosition) >= 0.0001f)
+                continue;
+
+            if (!matchingTagOnly || Accepts(item))
+                return true;
+        }
+
+        return false;
     }
 
     private void OnDrawGizmos()
@@ -86,27 +133,13 @@ public sealed class PlacementSpot : MonoBehaviour
 
         int capacity = Mathf.Max(1, maxItems);
         int columnCount = Mathf.Max(1, columns);
-        Transform origin = gridOrigin != null ? gridOrigin :
-            (placementPoint != null ? placementPoint : transform);
+        Transform origin = GetGridOrigin();
 
         CarryableItem[] placedItems = GetComponentsInChildren<CarryableItem>(true);
         for (int slot = 0; slot < capacity; slot++)
         {
-            int row = slot / columnCount;
-            int column = slot % columnCount;
-            Vector3 offset = new Vector3(column * spacing.x, 0f, row * spacing.y);
-            Vector3 localPosition = transform.InverseTransformPoint(origin.TransformPoint(offset));
-            bool occupied = false;
-
-            foreach (CarryableItem item in placedItems)
-            {
-                if (item.transform.parent == transform &&
-                    Vector3.SqrMagnitude(item.transform.localPosition - localPosition) < 0.0001f)
-                {
-                    occupied = true;
-                    break;
-                }
-            }
+            Vector3 localPosition = GetSlotLocalPosition(slot, columnCount, origin);
+            bool occupied = IsSlotOccupied(localPosition, placedItems, false);
 
             Gizmos.color = occupied ? Color.red : Color.green;
             Gizmos.DrawWireCube(transform.TransformPoint(localPosition),
