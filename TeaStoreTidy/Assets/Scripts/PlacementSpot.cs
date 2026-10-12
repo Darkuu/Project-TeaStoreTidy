@@ -8,7 +8,7 @@ public sealed class PlacementSpot : MonoBehaviour
     [SerializeField, Min(1)] private int columns = 3;
     [Tooltip("Distance between item positions along the grid origin's local X and Z axes.")]
     [SerializeField] private Vector2 spacing = new Vector2(0.5f, 0.5f);
-    [Tooltip("Place this at the center of the first slot. If empty, the legacy Placement Point or this object's transform is used.")]
+    [Tooltip("Center point of the grid. If empty, the legacy Placement Point or this object's transform is used.")]
     [SerializeField] private Transform gridOrigin;
 
     [Tooltip("Legacy fallback for the grid origin. Prefer Grid Origin for new setups.")]
@@ -69,11 +69,9 @@ public sealed class PlacementSpot : MonoBehaviour
             return false;
 
         int columnCount = Mathf.Max(1, columns);
-        int row = slotIndex / columnCount;
-        int column = slotIndex % columnCount;
         Transform origin = GetGridOrigin();
 
-        Vector3 slotOffset = new Vector3(column * spacing.x, 0f, row * spacing.y);
+        Vector3 slotOffset = GetSlotOffset(slotIndex, columnCount);
         Vector3 worldPosition = origin.TransformPoint(slotOffset);
         item.Place(transform, worldPosition, origin.rotation);
         return true;
@@ -104,10 +102,19 @@ public sealed class PlacementSpot : MonoBehaviour
 
     private Vector3 GetSlotLocalPosition(int slot, int columnCount, Transform origin)
     {
+        Vector3 offset = GetSlotOffset(slot, columnCount);
+        return transform.InverseTransformPoint(origin.TransformPoint(offset));
+    }
+
+    private Vector3 GetSlotOffset(int slot, int columnCount)
+    {
         int row = slot / columnCount;
         int column = slot % columnCount;
-        Vector3 offset = new Vector3(column * spacing.x, 0f, row * spacing.y);
-        return transform.InverseTransformPoint(origin.TransformPoint(offset));
+        int rowCount = Mathf.CeilToInt((float)SlotCount / columnCount);
+
+        float centeredColumn = column - (columnCount - 1) * 0.5f;
+        float centeredRow = row - (rowCount - 1) * 0.5f;
+        return new Vector3(centeredColumn * spacing.x, 0f, centeredRow * spacing.y);
     }
 
     private bool IsSlotOccupied(Vector3 slotPosition, CarryableItem[] placedItems, bool matchingTagOnly)
