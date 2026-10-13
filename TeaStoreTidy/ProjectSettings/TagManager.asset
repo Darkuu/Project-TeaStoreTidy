@@ -4,9 +4,16 @@
 TagManager:
   serializedVersion: 3
   tags:
+  - TeaBag1
+  - TeaBag2
+  - TeaBag3
+  - TeaBag4
+  - TeaBag5
   - TeaBox1
   - TeaBox2
-  - TeaBag1
+  - TeaBox3
+  - TeaBox4
+  - TeaBox5
   layers:
   - Default
   - TransparentFX
