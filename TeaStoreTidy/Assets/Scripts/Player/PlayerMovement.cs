@@ -19,6 +19,7 @@ public sealed class FirstPersonController : MonoBehaviour
     [SerializeField, Range(1f, 89f)] private float maxLookAngle = 89f;
 
     private CharacterController controller;
+    private PauseMenuController pauseMenu;
     private InputAction moveAction;
     private InputAction lookAction;
     private float verticalVelocity;
@@ -29,6 +30,7 @@ public sealed class FirstPersonController : MonoBehaviour
     private void Awake()
     {
         controller = GetComponent<CharacterController>();
+        pauseMenu = GetComponent<PauseMenuController>();
 
         if (cameraTransform == null || inputActions == null)
         {
@@ -79,13 +81,17 @@ public sealed class FirstPersonController : MonoBehaviour
 
     private void Update()
     {
-        if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+        if (pauseMenu == null)
+            pauseMenu = GetComponent<PauseMenuController>();
+
+        if (pauseMenu == null && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
         {
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
         }
 
-        if (!powersMenuOpen && Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+        if (!powersMenuOpen && (pauseMenu == null || !pauseMenu.IsOpen) &&
+            Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;

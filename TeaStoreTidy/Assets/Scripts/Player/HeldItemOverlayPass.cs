@@ -1,8 +1,10 @@
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.HighDefinition;
+using System;
 
 /// <summary>Renders carried items after scene geometry without depth occlusion.</summary>
+[Serializable]
 public sealed class HeldItemOverlayPass : CustomPass
 {
     public LayerMask layerMask;

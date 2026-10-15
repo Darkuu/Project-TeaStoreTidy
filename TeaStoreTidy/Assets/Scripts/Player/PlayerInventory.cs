@@ -55,6 +55,9 @@ public sealed class PlayerInventory : MonoBehaviour
         if (enabled && GetComponent<GameSaveSystem>() == null)
             gameObject.AddComponent<GameSaveSystem>();
 
+        if (enabled && GetComponent<PauseMenuController>() == null)
+            gameObject.AddComponent<PauseMenuController>();
+
     }
 
     private void OnEnable()

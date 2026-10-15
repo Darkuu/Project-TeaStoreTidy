@@ -1,6 +1,7 @@
 using UnityEngine;
 using TMPro;
 using UnityEngine.InputSystem;
+using UnityEngine.Serialization;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -35,10 +36,8 @@ public sealed class PlacementProgressTracker : MonoBehaviour
     [SerializeField, Min(0f)] private float sortingMenuSlideDistance = 400f;
     [SerializeField, Min(0.1f)] private float sortingMenuSlideSpeed = 12f;
 
-    [Header("Powers Menu (shared button prefab and power definitions)")]
-    [SerializeField] private GameObject powersMenu;
-    [SerializeField] private TextMeshProUGUI powerPointsText;
-    [SerializeField] private Transform powerButtonContainer;
+    [Header("Powers Menu (loaded from Resources/Power Up Panel.prefab)")]
+    [SerializeField, FormerlySerializedAs("powersMenu")] private GameObject oldScenePowersMenu;
     [SerializeField] private PowerUpgradeButton powerButtonPrefab;
     [SerializeField] private PowerUpgradeDefinition[] availablePowers;
     [SerializeField, Min(0)] private int powerPoints;
@@ -47,6 +46,9 @@ public sealed class PlacementProgressTracker : MonoBehaviour
 
     private PlayerInventory playerInventory;
     private FirstPersonController playerController;
+    private GameObject powersMenu;
+    private TMP_Text powerPointsText;
+    private Transform powerButtonContainer;
     private RectTransform sortingMenu;
     private TextMeshProUGUI sortingProgressText;
     private readonly List<PowerUpgradeButton> spawnedPowerButtons = new List<PowerUpgradeButton>();
@@ -71,6 +73,7 @@ public sealed class PlacementProgressTracker : MonoBehaviour
         playerController = FindFirstObjectByType<FirstPersonController>();
 
         placementSpots = FindObjectsByType<PlacementSpot>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        SetupPowersMenu();
         if (powersMenu != null)
             powersMenu.SetActive(false);
         SetupSortingMenu();
@@ -80,6 +83,34 @@ public sealed class PlacementProgressTracker : MonoBehaviour
         ApplyUnlockedPowers();
         RefreshProgress();
         UpdatePowersUI();
+    }
+
+    private void SetupPowersMenu()
+    {
+        GameObject prefab = Resources.Load<GameObject>("Power Up Panel");
+        if (prefab == null)
+        {
+            Debug.LogError("Power Up Panel prefab was not found at Assets/Resources/Power Up Panel.prefab.", this);
+            return;
+        }
+
+        GameObject sceneMenu = oldScenePowersMenu != null ? oldScenePowersMenu : GameObject.Find("Power Up Panel");
+        if (sceneMenu != null)
+            sceneMenu.SetActive(false);
+
+        Transform parent = sortingMenuParent;
+        powersMenu = Instantiate(prefab, parent);
+        powersMenu.name = prefab.name;
+        powersMenu.SetActive(false);
+        PowersMenuView view = powersMenu.GetComponent<PowersMenuView>();
+        if (view == null)
+        {
+            Debug.LogError("Power Up Panel prefab needs a PowersMenuView component.", powersMenu);
+            return;
+        }
+
+        powerPointsText = view.powerPointsText;
+        powerButtonContainer = view.powerButtonContainer;
     }
 
     private void SetupSortingMenu()
