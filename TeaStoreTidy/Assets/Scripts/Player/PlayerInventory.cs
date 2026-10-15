@@ -38,6 +38,8 @@ public sealed class PlayerInventory : MonoBehaviour
             return;
         }
 
+        InputBindingPersistence.Apply(inputActions);
+
         InputActionMap playerMap = inputActions.FindActionMap("Player", false);
         interactAction = playerMap != null ? playerMap.FindAction("Interact", false) : null;
         dropAction = playerMap != null ? playerMap.FindAction("Drop", false) : null;

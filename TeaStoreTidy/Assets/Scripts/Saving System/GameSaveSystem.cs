@@ -48,6 +48,28 @@ public sealed class GameSaveSystem : MonoBehaviour
 {
     private const float AutosaveIntervalSeconds = 300f;
     private const string SaveFileName = "TeaStoreTidySave.json";
+    private static bool loadRequestedOnNextGameScene;
+    private static string StaticSavePath => Path.Combine(Application.persistentDataPath, SaveFileName);
+
+    public static bool SaveExists => File.Exists(StaticSavePath);
+
+    public static void RequestLoadOnNextGameScene(bool shouldLoad)
+    {
+        loadRequestedOnNextGameScene = shouldLoad;
+    }
+
+    public static void DeleteSave()
+    {
+        try
+        {
+            if (File.Exists(StaticSavePath))
+                File.Delete(StaticSavePath);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError($"Could not delete save file '{StaticSavePath}': {exception.Message}");
+        }
+    }
 
     private readonly Dictionary<Transform, string> idsByTransform = new Dictionary<Transform, string>();
     private readonly Dictionary<string, Transform> transformsById = new Dictionary<string, Transform>();
@@ -78,6 +100,11 @@ public sealed class GameSaveSystem : MonoBehaviour
     private void Start()
     {
         nextAutosaveTime = Time.unscaledTime + AutosaveIntervalSeconds;
+        if (loadRequestedOnNextGameScene)
+        {
+            loadRequestedOnNextGameScene = false;
+            LoadGame();
+        }
     }
 
     private void Update()

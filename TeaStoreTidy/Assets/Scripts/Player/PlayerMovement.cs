@@ -37,6 +37,8 @@ public sealed class FirstPersonController : MonoBehaviour
             return;
         }
 
+        InputBindingPersistence.Apply(inputActions);
+
         InputActionMap playerMap = inputActions.FindActionMap("Player", false);
         if (playerMap == null)
         {
