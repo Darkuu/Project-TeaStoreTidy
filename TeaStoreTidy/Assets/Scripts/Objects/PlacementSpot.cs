@@ -16,6 +16,12 @@ public sealed class PlacementSpot : MonoBehaviour
     [Tooltip("Legacy fallback for the grid origin. Prefer Grid Origin for new setups.")]
     [SerializeField] private Transform placementPoint;
 
+    [Header("Skill Progress")]
+    [SerializeField] private string skillTree = "General";
+    [SerializeField, Min(0)] private int skillPointsOnComplete = 1;
+    public string SkillTree => string.IsNullOrWhiteSpace(skillTree) ? "General" : skillTree.Trim();
+    public int SkillPointsOnComplete => Mathf.Max(0, skillPointsOnComplete);
+
     private string persistentId;
 
     public string PersistentId

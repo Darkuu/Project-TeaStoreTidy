@@ -3646,7 +3646,7 @@ GameObject:
   - component: {fileID: 1859886282}
   - component: {fileID: 1859886281}
   m_Layer: 5
-  m_Name: Power Points Display
+  m_Name: Skill Progress Display
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -3826,14 +3826,8 @@ MonoBehaviour:
   sortingMenuSlideDistance: 400
   sortingMenuSlideSpeed: 12
   powersMenu: {fileID: 241096708}
-  powerPointsText: {fileID: 1859886281}
-  powerButtonContainer: {fileID: 160970066}
-  powerButtonPrefab: {fileID: 739142153704419620, guid: 5d370967194c46509f65bd8c0d5f71f3, type: 3}
-  availablePowers:
-  - {fileID: 11400000, guid: 3d72935e6cc443adbf0512a23f93d890, type: 2}
-  - {fileID: 11400000, guid: 94b17b2902bb4db58a2fb014c3d2293a, type: 2}
-  powerPoints: 0
-  powerProgress: []
+  skillProgressText: {fileID: 1859886281}
+  legacyPurchaseButtons: {fileID: 160970066}
 --- !u!1 &1960903865
 GameObject:
   m_ObjectHideFlags: 0
@@ -4211,3 +4205,4 @@ SceneRoots:
   - {fileID: 483011750}
   - {fileID: 2145059407}
   - {fileID: 1681148533}
+

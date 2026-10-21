@@ -38,9 +38,6 @@ public sealed class GameSaveData
     public Quaternion playerRotation;
     public Quaternion cameraLocalRotation;
     public int inventoryCapacity;
-    public int powerPoints;
-    public int nextInventoryUpgradeCost = 1;
-    public List<SavedPowerProgress> powerProgress = new List<SavedPowerProgress>();
 }
 
 /// <summary>Saves scene object state, player view, and inventory to persistent storage.</summary>
@@ -143,9 +140,7 @@ public sealed class GameSaveSystem : MonoBehaviour
             playerPosition = transform.position,
             playerRotation = transform.rotation,
             cameraLocalRotation = inventory != null ? inventory.CameraLocalRotation : Quaternion.identity,
-            inventoryCapacity = inventory != null ? inventory.InventoryCapacity : 0,
-            powerPoints = progressTracker != null ? progressTracker.PowerPoints : 0,
-            powerProgress = progressTracker != null ? progressTracker.GetSavedPowerProgress() : new List<SavedPowerProgress>(),
+            inventoryCapacity = inventory != null ? inventory.BaseInventoryCapacity : 0,
             carriedItemIds = inventory != null ? inventory.GetCarriedItemIds() : new List<string>(),
             selectedItemIndex = inventory != null ? inventory.SelectedItemIndex : -1
         };
@@ -324,8 +319,6 @@ public sealed class GameSaveSystem : MonoBehaviour
                 inventory.RestoreInventory(data.carriedItemIds, data.selectedItemIndex, itemsById);
             }
 
-            if (progressTracker != null)
-                progressTracker.RestorePowerProgress(data.powerPoints, data.powerProgress, data.nextInventoryUpgradeCost);
         }
         catch (Exception exception)
         {

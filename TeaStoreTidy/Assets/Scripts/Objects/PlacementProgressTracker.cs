@@ -12,12 +12,29 @@ public sealed class ItemProgressDisplayName
     public string displayName;
 }
 
-[Serializable]
-public sealed class SavedPowerProgress
+public enum SkillPerkEffect
 {
-    public string id;
-    public int level;
-    public int nextCost;
+    None,
+    IncreaseInventoryCapacity,
+    UnlockScentTrail
+}
+
+[Serializable]
+public sealed class SkillPerk
+{
+    public string name = "New Perk";
+    [TextArea] public string description;
+    [Min(1)] public int pointsRequired = 1;
+    public SkillPerkEffect effect;
+    [Min(1)] public int effectAmount = 1;
+}
+
+[Serializable]
+public sealed class SkillTreeDefinition
+{
+    public string name = "General";
+    [Tooltip("Perk 1 unlocks once. Perks 2 onward repeat in order forever.")]
+    public SkillPerk[] perks;
 }
 
 /// <summary>Displays how many storage spots have been completely and correctly filled.</summary>
@@ -35,22 +52,19 @@ public sealed class PlacementProgressTracker : MonoBehaviour
     [SerializeField, Min(0f)] private float sortingMenuSlideDistance = 400f;
     [SerializeField, Min(0.1f)] private float sortingMenuSlideSpeed = 12f;
 
-    [Header("Powers Menu (shared button prefab and power definitions)")]
+    [Header("Skill Progress Menu")]
     [SerializeField] private GameObject powersMenu;
-    [SerializeField] private TextMeshProUGUI powerPointsText;
-    [SerializeField] private Transform powerButtonContainer;
-    [SerializeField] private PowerUpgradeButton powerButtonPrefab;
-    [SerializeField] private PowerUpgradeDefinition[] availablePowers;
-    [SerializeField, Min(0)] private int powerPoints;
+    [SerializeField] private TextMeshProUGUI skillProgressText;
+    [SerializeField] private Transform legacyPurchaseButtons;
+    [SerializeField] private SkillTreeDefinition[] skillTrees;
 
-    [SerializeField, HideInInspector] private List<SavedPowerProgress> powerProgress = new List<SavedPowerProgress>();
-
-    private PlayerInventory playerInventory;
     private FirstPersonController playerController;
     private RectTransform sortingMenu;
     private TextMeshProUGUI sortingProgressText;
-    private readonly List<PowerUpgradeButton> spawnedPowerButtons = new List<PowerUpgradeButton>();
     private readonly Dictionary<string, ItemProgressCounts> itemProgress = new Dictionary<string, ItemProgressCounts>();
+    private readonly Dictionary<string, SkillProgressCounts> skillProgress =
+        new Dictionary<string, SkillProgressCounts>(StringComparer.OrdinalIgnoreCase);
+    private readonly List<string> skillNames = new List<string>();
     private readonly List<string> sortedItemTags = new List<string>();
     private readonly StringBuilder sortingTextBuilder = new StringBuilder();
 
@@ -67,7 +81,6 @@ public sealed class PlacementProgressTracker : MonoBehaviour
 
     private void Start()
     {
-        playerInventory = FindFirstObjectByType<PlayerInventory>();
         playerController = FindFirstObjectByType<FirstPersonController>();
 
         placementSpots = FindObjectsByType<PlacementSpot>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
@@ -76,10 +89,10 @@ public sealed class PlacementProgressTracker : MonoBehaviour
         SetupSortingMenu();
         if (playerController != null)
             playerController.SetPowersMenuOpen(false);
-        BuildPowerButtons();
-        ApplyUnlockedPowers();
         RefreshProgress();
-        UpdatePowersUI();
+        RefreshSkillProgress();
+        if (legacyPurchaseButtons != null)
+            legacyPurchaseButtons.gameObject.SetActive(false);
     }
 
     private void SetupSortingMenu()
@@ -122,6 +135,7 @@ public sealed class PlacementProgressTracker : MonoBehaviour
 
         RefreshProgress();
         RefreshSortingProgress();
+        RefreshSkillProgress();
         nextRefreshTime = Time.unscaledTime + refreshInterval;
     }
 
@@ -169,172 +183,179 @@ public sealed class PlacementProgressTracker : MonoBehaviour
         return sortingMenuOpenPosition + Vector2.left * sortingMenuSlideDistance;
     }
 
-    public void PurchasePower(PowerUpgradeDefinition upgrade)
+    private void OnShelfCompleted(PlacementSpot spot)
     {
-        if (upgrade == null || string.IsNullOrWhiteSpace(upgrade.id))
-            return;
-
-        SavedPowerProgress state = GetPowerProgress(upgrade);
-        if (powerPoints < state.nextCost || (upgrade.oneTimeUnlock && state.level > 0))
-            return;
-
-        if (upgrade.effect == PowerUpgradeEffect.IncreaseInventoryCapacity)
-        {
-            if (playerInventory == null)
-                playerInventory = FindFirstObjectByType<PlayerInventory>();
-            if (playerInventory == null)
-                return;
-
-            playerInventory.IncreaseInventoryCapacity(upgrade.amountPerPurchase);
-        }
-        else if (upgrade.effect == PowerUpgradeEffect.ScentTrail)
-        {
-            ScentTrailPower scentPower = FindFirstObjectByType<ScentTrailPower>();
-            if (scentPower == null)
-            {
-                Debug.LogError("Add ScentTrailPower to the player before unlocking this power.", this);
-                return;
-            }
-            scentPower.SetUnlocked(true);
-        }
-
-        powerPoints -= state.nextCost;
-        state.level++;
-        state.nextCost = Mathf.CeilToInt(state.nextCost * Mathf.Max(1f, upgrade.costMultiplier));
-        UpdatePowersUI();
+        RefreshSkillProgress();
     }
 
-    // Keeps existing scene buttons wired to the original inventory upgrade working.
-    public void PurchaseInventoryUpgrade()
+    private sealed class SkillProgressCounts
     {
-        if (availablePowers == null)
-            return;
-        foreach (PowerUpgradeDefinition upgrade in availablePowers)
-        {
-            if (upgrade != null && upgrade.effect == PowerUpgradeEffect.IncreaseInventoryCapacity)
-            {
-                PurchasePower(upgrade);
-                return;
-            }
-        }
+        public int completed;
+        public int total;
     }
 
-    public int PowerPoints => powerPoints;
-
-    public List<SavedPowerProgress> GetSavedPowerProgress()
+    private void RefreshSkillProgress()
     {
-        var copy = new List<SavedPowerProgress>(powerProgress.Count);
-        foreach (SavedPowerProgress state in powerProgress)
-            copy.Add(new SavedPowerProgress { id = state.id, level = state.level, nextCost = state.nextCost });
-        return copy;
-    }
-
-    public void RestorePowerProgress(int savedPoints, List<SavedPowerProgress> savedProgress, int legacyInventoryCost = 1)
-    {
-        powerPoints = Mathf.Max(0, savedPoints);
-        powerProgress.Clear();
-        if (savedProgress != null)
+        skillProgress.Clear();
+        skillNames.Clear();
+        if (placementSpots != null)
         {
-            foreach (SavedPowerProgress state in savedProgress)
+            foreach (PlacementSpot spot in placementSpots)
             {
-                if (state != null && !string.IsNullOrWhiteSpace(state.id))
-                    powerProgress.Add(new SavedPowerProgress { id = state.id, level = Mathf.Max(0, state.level), nextCost = Mathf.Max(1, state.nextCost) });
-            }
-        }
-        if (powerProgress.Count == 0 && availablePowers != null)
-        {
-            foreach (PowerUpgradeDefinition upgrade in availablePowers)
-            {
-                if (upgrade != null && upgrade.effect == PowerUpgradeEffect.IncreaseInventoryCapacity)
+                if (spot == null)
+                    continue;
+                string tree = spot.SkillTree;
+                if (!skillProgress.ContainsKey(tree))
                 {
-                    powerProgress.Add(new SavedPowerProgress
-                    {
-                        id = upgrade.id,
-                        level = 0,
-                        nextCost = Mathf.Max(1, legacyInventoryCost)
-                    });
-                    break;
+                    skillProgress.Add(tree, new SkillProgressCounts());
+                    skillNames.Add(tree);
+                }
+                if (spot.IsComplete)
+                    skillProgress[tree].completed += spot.SkillPointsOnComplete;
+                skillProgress[tree].total++;
+            }
+        }
+
+        ApplyPerkEffects();
+        if (skillProgressText == null)
+            return;
+
+        skillNames.Sort(StringComparer.OrdinalIgnoreCase);
+        sortingTextBuilder.Clear();
+        sortingTextBuilder.AppendLine("Skill Progress");
+        if (skillNames.Count == 0)
+            sortingTextBuilder.Append("No skill trees assigned");
+        else
+            foreach (string tree in skillNames)
+            {
+                SkillProgressCounts progress = skillProgress[tree];
+                sortingTextBuilder.Append(tree).Append(": ").Append(progress.completed).AppendLine(" points");
+                AppendTreePerks(tree, progress.completed);
+            }
+        skillProgressText.text = sortingTextBuilder.ToString().TrimEnd();
+    }
+
+    private void AppendTreePerks(string treeName, int points)
+    {
+        SkillTreeDefinition tree = FindTree(treeName);
+        if (tree == null || tree.perks == null || tree.perks.Length == 0)
+        {
+            sortingTextBuilder.AppendLine("  No perks configured");
+            return;
+        }
+
+        GetPerkProgress(tree, points, out int firstUnlocks, out int repeatUnlocks, out int pointsToNext);
+        if (firstUnlocks == 0)
+        {
+            sortingTextBuilder.Append("  Next: ").Append(tree.perks[0] != null ? tree.perks[0].name : "(empty perk)")
+                .Append(" (").Append(pointsToNext).AppendLine(" points)");
+            return;
+        }
+
+        sortingTextBuilder.Append("  ").Append(tree.perks[0] != null ? tree.perks[0].name : "(empty perk)")
+            .AppendLine(" [unlocked]");
+        if (tree.perks.Length == 1)
+        {
+            sortingTextBuilder.AppendLine("  First perk is the only perk; no repeat loop configured");
+            return;
+        }
+
+        int nextIndex = 1 + (repeatUnlocks % (tree.perks.Length - 1));
+        sortingTextBuilder.Append("  Loop: ");
+        for (int i = 1; i < tree.perks.Length; i++)
+        {
+            SkillPerk perk = tree.perks[i];
+            int unlocked = CountPerkUnlocks(tree, repeatUnlocks, i);
+            sortingTextBuilder.Append(perk != null ? perk.name : "(empty perk)");
+            if (i == nextIndex)
+                sortingTextBuilder.Append(" [next: ").Append(pointsToNext).Append(" points]");
+            else if (unlocked > 0)
+                sortingTextBuilder.Append(" [unlocked x").Append(unlocked).Append(']');
+            if (i < tree.perks.Length - 1)
+                sortingTextBuilder.Append(" -> ");
+        }
+        sortingTextBuilder.AppendLine();
+    }
+
+    private void ApplyPerkEffects()
+    {
+        int inventoryBonus = 0;
+        bool scentUnlocked = false;
+        if (skillTrees != null)
+        {
+            foreach (SkillTreeDefinition tree in skillTrees)
+            {
+                if (tree == null || string.IsNullOrWhiteSpace(tree.name) || tree.perks == null || tree.perks.Length == 0)
+                    continue;
+                skillProgress.TryGetValue(tree.name.Trim(), out SkillProgressCounts progress);
+                int points = progress != null ? progress.completed : 0;
+                GetPerkProgress(tree, points, out int first, out int repeats, out _);
+                for (int i = 0; i < tree.perks.Length; i++)
+                {
+                    SkillPerk perk = tree.perks[i];
+                    if (perk == null)
+                        continue;
+                    int unlocked = i == 0 ? first : CountPerkUnlocks(tree, repeats, i);
+                    if (perk.effect == SkillPerkEffect.IncreaseInventoryCapacity)
+                        inventoryBonus += unlocked * Mathf.Max(1, perk.effectAmount);
+                    else if (perk.effect == SkillPerkEffect.UnlockScentTrail && unlocked > 0)
+                        scentUnlocked = true;
                 }
             }
         }
-        BuildPowerButtons();
-        ApplyUnlockedPowers();
-        UpdatePowersUI();
+
+        PlayerInventory inventory = FindFirstObjectByType<PlayerInventory>();
+        if (inventory != null)
+            inventory.SetSkillCapacityBonus(inventoryBonus);
+        ScentTrailPower scentTrail = FindFirstObjectByType<ScentTrailPower>();
+        if (scentTrail != null)
+            scentTrail.SetUnlocked(scentUnlocked);
     }
 
-    private void ApplyUnlockedPowers()
+    private int CountPerkUnlocks(SkillTreeDefinition tree, int repeatUnlocks, int perkIndex)
     {
-        ScentTrailPower scentPower = FindFirstObjectByType<ScentTrailPower>();
-        if (scentPower == null || availablePowers == null)
+        if (tree.perks.Length <= 1 || perkIndex <= 0)
+            return 0;
+        int firstOccurrence = perkIndex - 1;
+        return repeatUnlocks <= firstOccurrence
+            ? 0
+            : 1 + (repeatUnlocks - 1 - firstOccurrence) / (tree.perks.Length - 1);
+    }
+
+    private SkillTreeDefinition FindTree(string treeName)
+    {
+        if (skillTrees == null)
+            return null;
+        foreach (SkillTreeDefinition tree in skillTrees)
+            if (tree != null && !string.IsNullOrWhiteSpace(tree.name) &&
+                string.Equals(tree.name.Trim(), treeName, StringComparison.OrdinalIgnoreCase))
+                return tree;
+        return null;
+    }
+
+    private static void GetPerkProgress(SkillTreeDefinition tree, int points, out int firstUnlocks,
+        out int repeatUnlocks, out int pointsToNext)
+    {
+        SkillPerk first = tree.perks[0];
+        int firstCost = first != null ? Mathf.Max(1, first.pointsRequired) : 1;
+        firstUnlocks = points >= firstCost ? 1 : 0;
+        repeatUnlocks = 0;
+        pointsToNext = firstUnlocks == 0 ? firstCost - points : 0;
+        if (firstUnlocks == 0 || tree.perks.Length <= 1)
             return;
 
-        foreach (PowerUpgradeDefinition upgrade in availablePowers)
+        int remaining = points - firstCost;
+        int index = 1;
+        while (tree.perks[index] != null && remaining >= Mathf.Max(1, tree.perks[index].pointsRequired))
         {
-            if (upgrade == null || upgrade.effect != PowerUpgradeEffect.ScentTrail)
-                continue;
-
-            SavedPowerProgress state = GetPowerProgress(upgrade);
-            scentPower.SetUnlocked(state.level > 0);
+            remaining -= Mathf.Max(1, tree.perks[index].pointsRequired);
+            repeatUnlocks++;
+            index = index == tree.perks.Length - 1 ? 1 : index + 1;
         }
+        pointsToNext = GetPerkCost(tree.perks[index]) - remaining;
     }
 
-    private SavedPowerProgress GetPowerProgress(PowerUpgradeDefinition upgrade)
-    {
-        foreach (SavedPowerProgress state in powerProgress)
-            if (state.id == upgrade.id)
-                return state;
-
-        var newState = new SavedPowerProgress
-        {
-            id = upgrade.id,
-            level = 0,
-            nextCost = Mathf.Max(1, upgrade.startingCost)
-        };
-        powerProgress.Add(newState);
-        return newState;
-    }
-
-    private void BuildPowerButtons()
-    {
-        foreach (PowerUpgradeButton button in spawnedPowerButtons)
-            if (button != null)
-                Destroy(button.gameObject);
-        spawnedPowerButtons.Clear();
-
-        if (powerButtonContainer == null || powerButtonPrefab == null || availablePowers == null)
-            return;
-
-        foreach (PowerUpgradeDefinition upgrade in availablePowers)
-        {
-            if (upgrade == null)
-                continue;
-
-            PowerUpgradeButton button = Instantiate(powerButtonPrefab, powerButtonContainer);
-            spawnedPowerButtons.Add(button);
-            SavedPowerProgress state = GetPowerProgress(upgrade);
-            button.Configure(upgrade, this, powerPoints, state.level, state.nextCost);
-        }
-    }
-
-    private void OnShelfCompleted(PlacementSpot spot)
-    {
-        powerPoints++;
-        UpdatePowersUI();
-    }
-
-    private void UpdatePowersUI()
-    {
-        if (powerPointsText != null)
-            powerPointsText.text = $"Power points: {powerPoints}";
-        foreach (PowerUpgradeButton button in spawnedPowerButtons)
-        {
-            if (button == null || button.Definition == null)
-                continue;
-
-            SavedPowerProgress state = GetPowerProgress(button.Definition);
-            button.Configure(button.Definition, this, powerPoints, state.level, state.nextCost);
-        }
-    }
+    private static int GetPerkCost(SkillPerk perk) => perk != null ? Mathf.Max(1, perk.pointsRequired) : 1;
 
     private void RefreshProgress()
     {

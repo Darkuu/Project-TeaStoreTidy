@@ -16,6 +16,7 @@ public sealed class PlayerInventory : MonoBehaviour
     [SerializeField, Min(0.1f)] private float interactDistance = 3f;
     [SerializeField] private LayerMask interactLayers = ~0;
     [SerializeField, Min(1)] private int inventoryCapacity = 6;
+    private int skillCapacityBonus;
     [SerializeField, Min(0f)] private float dropForwardDistance = 0.8f;
     [SerializeField, Min(0f)] private float dropDownOffset = 0.5f;
 
@@ -109,7 +110,7 @@ public sealed class PlayerInventory : MonoBehaviour
             }
         }
 
-        if (carriedItems.Count >= inventoryCapacity)
+        if (carriedItems.Count >= InventoryCapacity)
             return;
 
         CarryableItem item = hit.collider.GetComponentInParent<CarryableItem>();
@@ -168,7 +169,8 @@ public sealed class PlayerInventory : MonoBehaviour
     }
 
     public int SelectedItemIndex => selectedItemIndex;
-    public int InventoryCapacity => inventoryCapacity;
+    public int InventoryCapacity => inventoryCapacity + skillCapacityBonus;
+    public int BaseInventoryCapacity => inventoryCapacity;
     public Quaternion CameraLocalRotation => cameraTransform.localRotation;
     public Transform CameraTransform => cameraTransform;
     public InputActionAsset InputActions => inputActions;
@@ -177,15 +179,15 @@ public sealed class PlayerInventory : MonoBehaviour
         : null;
     public bool IsCarrying(CarryableItem item) => carriedItems.Contains(item);
 
-    public void IncreaseInventoryCapacity(int amount = 1)
-    {
-        inventoryCapacity += Mathf.Max(1, amount);
-    }
-
     public void RestoreInventoryCapacity(int capacity)
     {
         if (capacity > 0)
             inventoryCapacity = capacity;
+    }
+
+    public void SetSkillCapacityBonus(int amount)
+    {
+        skillCapacityBonus = Mathf.Max(0, amount);
     }
 
     public void RestoreInventory(List<string> itemIds, int savedSelectedIndex,
@@ -197,7 +199,7 @@ public sealed class PlayerInventory : MonoBehaviour
         {
             foreach (string itemId in itemIds)
             {
-                if (carriedItems.Count >= inventoryCapacity)
+                if (carriedItems.Count >= InventoryCapacity)
                     break;
 
                 if (itemsById.TryGetValue(itemId, out CarryableItem item) && item != null)

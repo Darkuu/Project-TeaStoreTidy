@@ -53,6 +53,8 @@ public sealed class ScentTrailPower : MonoBehaviour
 
     public void SetUnlocked(bool value)
     {
+        if (unlocked == value)
+            return;
         unlocked = value;
         if (abilityPanel != null)
             abilityPanel.SetActive(unlocked);
