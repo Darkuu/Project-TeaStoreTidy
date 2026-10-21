@@ -779,6 +779,8 @@ MonoBehaviour:
   spacing: {x: 0.34, y: 0.47}
   gridOrigin: {fileID: 748114561}
   placementPoint: {fileID: 748114561}
+  skillTree: Scent
+  skillPointsOnComplete: 1
   showGridPreview: 1
   previewSize: 0.2
 --- !u!65 &162732979
@@ -912,6 +914,8 @@ MonoBehaviour:
   spacing: {x: 0.34, y: 0.47}
   gridOrigin: {fileID: 1591915669}
   placementPoint: {fileID: 1591915669}
+  skillTree: General
+  skillPointsOnComplete: 1
   showGridPreview: 1
   previewSize: 0.2
 --- !u!65 &163511702
@@ -1153,6 +1157,8 @@ MonoBehaviour:
   spacing: {x: 0.34, y: 0.47}
   gridOrigin: {fileID: 1173344268}
   placementPoint: {fileID: 1173344268}
+  skillTree: Scent
+  skillPointsOnComplete: 1
   showGridPreview: 1
   previewSize: 0.2
 --- !u!65 &328203920
@@ -1597,6 +1603,8 @@ MonoBehaviour:
   spacing: {x: 0.34, y: 0.47}
   gridOrigin: {fileID: 131333238}
   placementPoint: {fileID: 131333238}
+  skillTree: Scent
+  skillPointsOnComplete: 1
   showGridPreview: 1
   previewSize: 0.2
 --- !u!65 &732179823
@@ -1761,6 +1769,8 @@ MonoBehaviour:
   spacing: {x: 0.34, y: 0.47}
   gridOrigin: {fileID: 90852976}
   placementPoint: {fileID: 90852976}
+  skillTree: General
+  skillPointsOnComplete: 1
   showGridPreview: 1
   previewSize: 0.2
 --- !u!65 &802976663
@@ -2377,7 +2387,14 @@ MonoBehaviour:
   inputActions: {fileID: -944628639613478452, guid: 35845fe01580c41289b024647b1d1c53, type: 3}
   cameraTransform: {fileID: 1823688467}
   moveSpeed: 5
+  moveAcceleration: 22
+  moveDeceleration: 28
+  airControl: 0.5
   gravity: -20
+  sprintStamina: 5
+  sprintDrainRate: 1
+  sprintRechargeRate: 1.5
+  sprintSpeedBonus: 2
   mouseSensitivity: 1
   maxLookAngle: 89
 --- !u!143 &1305600408
@@ -2780,6 +2797,8 @@ MonoBehaviour:
   spacing: {x: 0.34, y: 0.47}
   gridOrigin: {fileID: 1115491366}
   placementPoint: {fileID: 1115491366}
+  skillTree: General
+  skillPointsOnComplete: 1
   showGridPreview: 1
   previewSize: 0.2
 --- !u!65 &1523938144
@@ -2975,6 +2994,8 @@ MonoBehaviour:
   spacing: {x: 0.34, y: 0.47}
   gridOrigin: {fileID: 149198820}
   placementPoint: {fileID: 149198820}
+  skillTree: Scent
+  skillPointsOnComplete: 1
   showGridPreview: 1
   previewSize: 0.2
 --- !u!65 &1650563229
@@ -3141,6 +3162,8 @@ MonoBehaviour:
   spacing: {x: 0.34, y: 0.47}
   gridOrigin: {fileID: 1640617838}
   placementPoint: {fileID: 1640617838}
+  skillTree: Scent
+  skillPointsOnComplete: 1
   showGridPreview: 1
   previewSize: 0.2
 --- !u!65 &1702266037
@@ -3274,6 +3297,8 @@ MonoBehaviour:
   spacing: {x: 0.34, y: 0.47}
   gridOrigin: {fileID: 1343284085}
   placementPoint: {fileID: 1343284085}
+  skillTree: General
+  skillPointsOnComplete: 1
   showGridPreview: 1
   previewSize: 0.2
 --- !u!65 &1808009617
@@ -3999,6 +4024,8 @@ MonoBehaviour:
   spacing: {x: 0.34, y: 0.47}
   gridOrigin: {fileID: 818613492}
   placementPoint: {fileID: 818613492}
+  skillTree: General
+  skillPointsOnComplete: 1
   showGridPreview: 1
   previewSize: 0.2
 --- !u!65 &2076594445
@@ -4258,4 +4285,3 @@ SceneRoots:
   - {fileID: 483011750}
   - {fileID: 2145059407}
   - {fileID: 1681148533}
-
