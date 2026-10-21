@@ -27,6 +27,11 @@ public sealed class ScentTrailPower : MonoBehaviour
     private FirstPersonController playerController;
     private InputAction scentAction;
     private float nextUseTime;
+    private float durationBonus;
+    private float rangeBonus;
+    private float cooldownReduction;
+    private int extraTrails;
+    private float EffectiveCooldown => Mathf.Max(0.1f, cooldownDuration - cooldownReduction);
 
     private void Awake()
     {
@@ -65,6 +70,15 @@ public sealed class ScentTrailPower : MonoBehaviour
             DisableAction();
 
         UpdateAbilityDisplay();
+    }
+
+    public void SetUpgrades(float duration, float range, float cooldown, int trails)
+    {
+        durationBonus = Mathf.Max(0f, duration);
+        rangeBonus = Mathf.Max(0f, range);
+        cooldownReduction = Mathf.Max(0f, cooldown);
+        extraTrails = Mathf.Max(0, trails);
+        UpdateCooldownOverlay();
     }
 
     private void ResolveAction()
@@ -128,7 +142,7 @@ public sealed class ScentTrailPower : MonoBehaviour
             : transform.position + Vector3.down * Mathf.Abs(trailStartOffset.y);
         CarryableItem[] allItems = FindObjectsByType<CarryableItem>(
             FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-        int trailCount = 0;
+        var candidates = new System.Collections.Generic.List<CarryableItem>();
 
         foreach (CarryableItem item in allItems)
         {
@@ -136,21 +150,25 @@ public sealed class ScentTrailPower : MonoBehaviour
                 continue;
             if (item.GetComponentInParent<PlacementSpot>() != null)
                 continue;
-            if (Vector3.Distance(startPosition, item.transform.position) > searchRadius)
+            if (Vector3.Distance(startPosition, item.transform.position) > searchRadius + rangeBonus)
                 continue;
-
-            Vector3 targetPosition = item.transform.position;
-            StartCoroutine(AnimateFogTrail(startPosition, targetPosition));
-            trailCount++;
+            candidates.Add(item);
         }
 
-        if (trailCount == 0)
+        if (candidates.Count == 0)
         {
             SetTemporaryMessage("No matching items nearby");
             return false;
         }
 
-        nextUseTime = Time.time + cooldownDuration;
+        candidates.Sort((left, right) =>
+            (left.transform.position - startPosition).sqrMagnitude.CompareTo(
+                (right.transform.position - startPosition).sqrMagnitude));
+        int trailCount = Mathf.Min(candidates.Count, 1 + extraTrails);
+        for (int i = 0; i < trailCount; i++)
+            StartCoroutine(AnimateFogTrail(startPosition, candidates[i].transform.position));
+
+        nextUseTime = Time.time + EffectiveCooldown;
         UpdateAbilityDisplay();
         return true;
     }
@@ -173,7 +191,7 @@ public sealed class ScentTrailPower : MonoBehaviour
 
         // Leave the fog emitter at the destination for the rest of the reveal window.
         fog.transform.position = targetPosition;
-        yield return new WaitForSeconds(activeDuration);
+        yield return new WaitForSeconds(activeDuration + durationBonus);
         if (fog != null)
             Destroy(fog.gameObject);
     }
@@ -206,8 +224,8 @@ public sealed class ScentTrailPower : MonoBehaviour
 
         float remaining = Mathf.Max(0f, nextUseTime - Time.time);
         bool isCoolingDown = unlocked && remaining > 0f;
-        float cooldownProgress = isCoolingDown && cooldownDuration > 0f
-            ? 1f - Mathf.Clamp01(remaining / cooldownDuration)
+        float cooldownProgress = isCoolingDown && EffectiveCooldown > 0f
+            ? 1f - Mathf.Clamp01(remaining / EffectiveCooldown)
             : 0f;
         cooldownOverlay.type = Image.Type.Filled;
         cooldownOverlay.fillMethod = Image.FillMethod.Vertical;

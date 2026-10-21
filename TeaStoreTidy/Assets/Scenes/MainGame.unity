@@ -3828,6 +3828,59 @@ MonoBehaviour:
   powersMenu: {fileID: 241096708}
   skillProgressText: {fileID: 1859886281}
   legacyPurchaseButtons: {fileID: 160970066}
+  skillTrees:
+  - name: Scent
+    perks:
+    - name: Unlock Scent Trail
+      description: Unlock the Scent Trail ability.
+      pointsRequired: 1
+      effect: 2
+      effectAmount: 1
+      effectValue: 1
+    - name: Effect Duration
+      description: Keep each scent trail visible longer.
+      pointsRequired: 1
+      effect: 3
+      effectAmount: 1
+      effectValue: 5
+    - name: Range
+      description: Search farther for matching objects.
+      pointsRequired: 1
+      effect: 4
+      effectAmount: 1
+      effectValue: 5
+    - name: Recovery Rate
+      description: Reduce Scent Trail cooldown by five seconds.
+      pointsRequired: 1
+      effect: 5
+      effectAmount: 1
+      effectValue: 5
+    - name: Extra Trail
+      description: Lead to one additional closest object.
+      pointsRequired: 1
+      effect: 6
+      effectAmount: 1
+      effectValue: 1
+  - name: Sprint
+    perks:
+    - name: Stamina
+      description: Add two seconds of sprint stamina.
+      pointsRequired: 1
+      effect: 7
+      effectAmount: 1
+      effectValue: 2
+    - name: Recharge Rate
+      description: Recover stamina faster.
+      pointsRequired: 1
+      effect: 8
+      effectAmount: 1
+      effectValue: 0.5
+    - name: Running Speed
+      description: Increase sprint speed.
+      pointsRequired: 1
+      effect: 9
+      effectAmount: 1
+      effectValue: 0.5
 --- !u!1 &1960903865
 GameObject:
   m_ObjectHideFlags: 0

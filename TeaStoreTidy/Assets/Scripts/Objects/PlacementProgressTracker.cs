@@ -16,7 +16,14 @@ public enum SkillPerkEffect
 {
     None,
     IncreaseInventoryCapacity,
-    UnlockScentTrail
+    UnlockScentTrail,
+    ScentEffectDuration,
+    ScentRange,
+    ScentRecoveryRate,
+    ScentExtraTrail,
+    SprintStamina,
+    SprintRechargeRate,
+    SprintSpeed
 }
 
 [Serializable]
@@ -27,6 +34,8 @@ public sealed class SkillPerk
     [Min(1)] public int pointsRequired = 1;
     public SkillPerkEffect effect;
     [Min(1)] public int effectAmount = 1;
+    [Tooltip("Value per unlock: seconds (Scent duration/recovery, Sprint stamina), world units (Scent range/Sprint speed), targets (Extra Trail), or stamina per second (Sprint recharge).")]
+    [Min(0f)] public float effectValue = 1f;
 }
 
 [Serializable]
@@ -281,6 +290,13 @@ public sealed class PlacementProgressTracker : MonoBehaviour
     {
         int inventoryBonus = 0;
         bool scentUnlocked = false;
+        float scentDurationBonus = 0f;
+        float scentRangeBonus = 0f;
+        float scentCooldownReduction = 0f;
+        int scentExtraTrails = 0;
+        float sprintStaminaBonus = 0f;
+        float sprintRechargeBonus = 0f;
+        float sprintSpeedBonus = 0f;
         if (skillTrees != null)
         {
             foreach (SkillTreeDefinition tree in skillTrees)
@@ -298,8 +314,21 @@ public sealed class PlacementProgressTracker : MonoBehaviour
                     int unlocked = i == 0 ? first : CountPerkUnlocks(tree, repeats, i);
                     if (perk.effect == SkillPerkEffect.IncreaseInventoryCapacity)
                         inventoryBonus += unlocked * Mathf.Max(1, perk.effectAmount);
-                    else if (perk.effect == SkillPerkEffect.UnlockScentTrail && unlocked > 0)
-                        scentUnlocked = true;
+                    else if (unlocked > 0)
+                    {
+                        float value = Mathf.Max(0f, perk.effectValue) * unlocked;
+                        switch (perk.effect)
+                        {
+                            case SkillPerkEffect.UnlockScentTrail: scentUnlocked = true; break;
+                            case SkillPerkEffect.ScentEffectDuration: scentDurationBonus += value; break;
+                            case SkillPerkEffect.ScentRange: scentRangeBonus += value; break;
+                            case SkillPerkEffect.ScentRecoveryRate: scentCooldownReduction += value; break;
+                            case SkillPerkEffect.ScentExtraTrail: scentExtraTrails += Mathf.RoundToInt(value); break;
+                            case SkillPerkEffect.SprintStamina: sprintStaminaBonus += value; break;
+                            case SkillPerkEffect.SprintRechargeRate: sprintRechargeBonus += value; break;
+                            case SkillPerkEffect.SprintSpeed: sprintSpeedBonus += value; break;
+                        }
+                    }
                 }
             }
         }
@@ -309,7 +338,12 @@ public sealed class PlacementProgressTracker : MonoBehaviour
             inventory.SetSkillCapacityBonus(inventoryBonus);
         ScentTrailPower scentTrail = FindFirstObjectByType<ScentTrailPower>();
         if (scentTrail != null)
+        {
             scentTrail.SetUnlocked(scentUnlocked);
+            scentTrail.SetUpgrades(scentDurationBonus, scentRangeBonus, scentCooldownReduction, scentExtraTrails);
+        }
+        if (playerController != null)
+            playerController.SetSprintUpgrades(sprintStaminaBonus, sprintRechargeBonus, sprintSpeedBonus);
     }
 
     private int CountPerkUnlocks(SkillTreeDefinition tree, int repeatUnlocks, int perkIndex)
