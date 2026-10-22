@@ -44,6 +44,8 @@ public sealed class SkillTreeDefinition
     public string name = "General";
     [Tooltip("Perk 1 unlocks once. Perks 2 onward repeat in order forever.")]
     public SkillPerk[] perks;
+    [Tooltip("Assign a row instance placed in the scene. The tracker updates it without creating copies.")]
+    public SkillTreeProgressView progressView;
 }
 
 /// <summary>Displays how many storage spots have been completely and correctly filled.</summary>
@@ -63,8 +65,7 @@ public sealed class PlacementProgressTracker : MonoBehaviour
 
     [Header("Skill Progress Menu")]
     [SerializeField] private GameObject powersMenu;
-    [SerializeField] private TextMeshProUGUI skillProgressText;
-    [SerializeField] private Transform legacyPurchaseButtons;
+    [SerializeField] private TextMeshProUGUI legacyProgressText;
     [SerializeField] private SkillTreeDefinition[] skillTrees;
 
     private FirstPersonController playerController;
@@ -73,7 +74,7 @@ public sealed class PlacementProgressTracker : MonoBehaviour
     private readonly Dictionary<string, ItemProgressCounts> itemProgress = new Dictionary<string, ItemProgressCounts>();
     private readonly Dictionary<string, SkillProgressCounts> skillProgress =
         new Dictionary<string, SkillProgressCounts>(StringComparer.OrdinalIgnoreCase);
-    private readonly List<string> skillNames = new List<string>();
+    private readonly List<SkillTreeProgressView> skillViews = new List<SkillTreeProgressView>();
     private readonly List<string> sortedItemTags = new List<string>();
     private readonly StringBuilder sortingTextBuilder = new StringBuilder();
 
@@ -99,9 +100,10 @@ public sealed class PlacementProgressTracker : MonoBehaviour
         if (playerController != null)
             playerController.SetPowersMenuOpen(false);
         RefreshProgress();
+        BuildSkillTreeViews();
         RefreshSkillProgress();
-        if (legacyPurchaseButtons != null)
-            legacyPurchaseButtons.gameObject.SetActive(false);
+        if (legacyProgressText != null)
+            legacyProgressText.gameObject.SetActive(false);
     }
 
     private void SetupSortingMenu()
@@ -200,13 +202,11 @@ public sealed class PlacementProgressTracker : MonoBehaviour
     private sealed class SkillProgressCounts
     {
         public int completed;
-        public int total;
     }
 
     private void RefreshSkillProgress()
     {
         skillProgress.Clear();
-        skillNames.Clear();
         if (placementSpots != null)
         {
             foreach (PlacementSpot spot in placementSpots)
@@ -217,73 +217,40 @@ public sealed class PlacementProgressTracker : MonoBehaviour
                 if (!skillProgress.ContainsKey(tree))
                 {
                     skillProgress.Add(tree, new SkillProgressCounts());
-                    skillNames.Add(tree);
                 }
                 if (spot.IsComplete)
                     skillProgress[tree].completed += spot.SkillPointsOnComplete;
-                skillProgress[tree].total++;
             }
         }
 
         ApplyPerkEffects();
-        if (skillProgressText == null)
-            return;
-
-        skillNames.Sort(StringComparer.OrdinalIgnoreCase);
-        sortingTextBuilder.Clear();
-        sortingTextBuilder.AppendLine("Skill Progress");
-        if (skillNames.Count == 0)
-            sortingTextBuilder.Append("No skill trees assigned");
-        else
-            foreach (string tree in skillNames)
-            {
-                SkillProgressCounts progress = skillProgress[tree];
-                sortingTextBuilder.Append(tree).Append(": ").Append(progress.completed).AppendLine(" points");
-                AppendTreePerks(tree, progress.completed);
-            }
-        skillProgressText.text = sortingTextBuilder.ToString().TrimEnd();
+        foreach (SkillTreeProgressView view in skillViews)
+        {
+            if (view == null)
+                continue;
+            SkillTreeDefinition tree = FindTree(view.TreeName);
+            if (tree == null)
+                continue;
+            skillProgress.TryGetValue(tree.name.Trim(), out SkillProgressCounts progress);
+            GetPerkProgress(tree, progress != null ? progress.completed : 0,
+                out int firstUnlocks, out int repeatUnlocks, out _);
+            view.SetProgress(firstUnlocks > 0, repeatUnlocks);
+        }
     }
 
-    private void AppendTreePerks(string treeName, int points)
+    private void BuildSkillTreeViews()
     {
-        SkillTreeDefinition tree = FindTree(treeName);
-        if (tree == null || tree.perks == null || tree.perks.Length == 0)
-        {
-            sortingTextBuilder.AppendLine("  No perks configured");
+        skillViews.Clear();
+        if (skillTrees == null)
             return;
-        }
-
-        GetPerkProgress(tree, points, out int firstUnlocks, out int repeatUnlocks, out int pointsToNext);
-        if (firstUnlocks == 0)
+        foreach (SkillTreeDefinition tree in skillTrees)
         {
-            sortingTextBuilder.Append("  Next: ").Append(tree.perks[0] != null ? tree.perks[0].name : "(empty perk)")
-                .Append(" (").Append(pointsToNext).AppendLine(" points)");
-            return;
+            if (tree == null || tree.progressView == null)
+                continue;
+            SkillTreeProgressView view = tree.progressView;
+            view.Configure(tree.name, tree.perks != null ? tree.perks.Length : 0);
+            skillViews.Add(view);
         }
-
-        sortingTextBuilder.Append("  ").Append(tree.perks[0] != null ? tree.perks[0].name : "(empty perk)")
-            .AppendLine(" [unlocked]");
-        if (tree.perks.Length == 1)
-        {
-            sortingTextBuilder.AppendLine("  First perk is the only perk; no repeat loop configured");
-            return;
-        }
-
-        int nextIndex = 1 + (repeatUnlocks % (tree.perks.Length - 1));
-        sortingTextBuilder.Append("  Loop: ");
-        for (int i = 1; i < tree.perks.Length; i++)
-        {
-            SkillPerk perk = tree.perks[i];
-            int unlocked = CountPerkUnlocks(tree, repeatUnlocks, i);
-            sortingTextBuilder.Append(perk != null ? perk.name : "(empty perk)");
-            if (i == nextIndex)
-                sortingTextBuilder.Append(" [next: ").Append(pointsToNext).Append(" points]");
-            else if (unlocked > 0)
-                sortingTextBuilder.Append(" [unlocked x").Append(unlocked).Append(']');
-            if (i < tree.perks.Length - 1)
-                sortingTextBuilder.Append(" -> ");
-        }
-        sortingTextBuilder.AppendLine();
     }
 
     private void ApplyPerkEffects()
@@ -346,14 +313,13 @@ public sealed class PlacementProgressTracker : MonoBehaviour
             playerController.SetSprintUpgrades(sprintStaminaBonus, sprintRechargeBonus, sprintSpeedBonus);
     }
 
-    private int CountPerkUnlocks(SkillTreeDefinition tree, int repeatUnlocks, int perkIndex)
+    private static int CountPerkUnlocks(SkillTreeDefinition tree, int repeatUnlocks, int perkIndex)
     {
-        if (tree.perks.Length <= 1 || perkIndex <= 0)
-            return 0;
+        int loopLength = tree.perks.Length - 1;
         int firstOccurrence = perkIndex - 1;
         return repeatUnlocks <= firstOccurrence
             ? 0
-            : 1 + (repeatUnlocks - 1 - firstOccurrence) / (tree.perks.Length - 1);
+            : 1 + (repeatUnlocks - 1 - firstOccurrence) / loopLength;
     }
 
     private SkillTreeDefinition FindTree(string treeName)

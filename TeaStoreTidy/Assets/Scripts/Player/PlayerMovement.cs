@@ -170,8 +170,7 @@ public sealed class FirstPersonController : MonoBehaviour
         float oldMaximum = MaximumSprintStamina;
         staminaBonus = Mathf.Max(0f, extraStamina);
         rechargeBonus = Mathf.Max(0f, extraRecharge);
-        speedBonus = Mathf.Max(0f, extraSpeed);
-        currentSprintStamina = Mathf.Min(MaximumSprintStamina,
+        speedBonus = Mathf.Max(0f, extraSpeed); currentSprintStamina = Mathf.Min(MaximumSprintStamina,
             currentSprintStamina + Mathf.Max(0f, MaximumSprintStamina - oldMaximum));
         UpdateStaminaBar();
     }
