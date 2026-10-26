@@ -46,6 +46,8 @@ public sealed class MainMenuController : MonoBehaviour
 
     private void Awake()
     {
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
         InputBindingPersistence.Apply(inputActions);
         Bind(newGameButton, StartNewGame);
         Bind(loadGameButton, LoadGame);
@@ -54,6 +56,8 @@ public sealed class MainMenuController : MonoBehaviour
         Bind(backFromSettingsButton, () => ShowPanel(mainPanel));
         Bind(backFromBindingsButton, () => ShowPanel(settingsPanel));
         Bind(quitButton, Quit);
+        if (quitButton != null && quitButton.GetComponentInChildren<TMP_Text>(true) is TMP_Text quitLabel)
+            quitLabel.text = "Quit to Desktop";
         Bind(keyboardBindingsTabButton, () => ShowBindingTab(false));
         Bind(controllerBindingsTabButton, () => ShowBindingTab(true));
         ConfigureSettings();

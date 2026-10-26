@@ -127,13 +127,6 @@ public sealed class FirstPersonController : MonoBehaviour
 
     private void Update()
     {
-        if (Keyboard.current != null &&
-            Keyboard.current.escapeKey.wasPressedThisFrame)
-        {
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
-        }
-
         if (!powersMenuOpen &&
             Mouse.current != null &&
             Mouse.current.leftButton.wasPressedThisFrame)

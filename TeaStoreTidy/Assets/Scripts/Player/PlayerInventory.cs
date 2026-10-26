@@ -56,6 +56,11 @@ public sealed class PlayerInventory : MonoBehaviour
         if (enabled && GetComponent<GameSaveSystem>() == null)
             gameObject.AddComponent<GameSaveSystem>();
 
+        if (enabled && Resources.Load<GameObject>("Pause Menu") is GameObject pauseMenuPrefab)
+            Instantiate(pauseMenuPrefab, transform, false);
+        else if (enabled)
+            Debug.LogError("Pause Menu prefab is missing from Assets/Resources.", this);
+
     }
 
     private void OnEnable()
