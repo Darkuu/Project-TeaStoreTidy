@@ -33,9 +33,12 @@ public sealed class FirstPersonController : MonoBehaviour
     private float verticalVelocity;
     private float cameraPitch;
     private bool powersMenuOpen;
-
+    
+    
+    public Transform CameraTransform => cameraTransform;
     public bool PowersMenuOpen => powersMenuOpen;
     public InputActionAsset InputActions => inputActions;
+    
 
     private void Awake()
     {
