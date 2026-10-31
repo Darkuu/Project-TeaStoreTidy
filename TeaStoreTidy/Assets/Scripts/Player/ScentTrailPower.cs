@@ -35,8 +35,7 @@ public sealed class ScentTrailPower : MonoBehaviour
 
     private void Awake()
     {
-        inventory = GetComponent<PlayerInventory>();
-        playerController = GetComponent<FirstPersonController>();
+        CachePlayerComponents();
         if (abilityPanel != null)
             abilityPanel.SetActive(unlocked);
         ResolveAction();
@@ -83,11 +82,34 @@ public sealed class ScentTrailPower : MonoBehaviour
 
     private void ResolveAction()
     {
-        if (inventory == null)
-            inventory = GetComponent<PlayerInventory>();
-        InputActionAsset actions = inventory != null ? inventory.InputActions : null;
-        InputActionMap playerMap = actions != null ? actions.FindActionMap("Player", false) : null;
+        CachePlayerComponents();
+        FirstPersonController controller = GetComponent<FirstPersonController>();
+        if (controller == null)
+            controller = playerController;
+        InputActionAsset actions = controller != null ? controller.InputActions : null;
+        if (actions == null && inventory != null)
+            actions = inventory.InputActions;
+
+        scentAction = null;
+        if (actions == null)
+            return;
+
+        // Support renamed action display values while still requiring the
+        // scent binding's stable ID when the configured name does not match.
+        InputActionMap playerMap = actions.FindActionMap("Player", false);
         scentAction = playerMap != null ? playerMap.FindAction(actionName, false) : null;
+        if (scentAction == null)
+            scentAction = actions.FindAction("a57b676a-eaad-44d5-aa83-1c581c19a3d9", false);
+        if (scentAction == null)
+            scentAction = actions.FindAction("Player/ScentTrail", false);
+    }
+
+    private void CachePlayerComponents()
+    {
+        if (inventory == null)
+            inventory = GetComponentInParent<PlayerInventory>();
+        if (playerController == null)
+            playerController = GetComponentInParent<FirstPersonController>();
     }
 
     private void EnableAction()
