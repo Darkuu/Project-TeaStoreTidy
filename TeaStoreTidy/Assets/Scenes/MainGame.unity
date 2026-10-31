@@ -279,8 +279,10 @@ MonoBehaviour:
   rechargeBonus: 0
   speedBonus: 0
   staminaBar: {fileID: 1531037067}
-  staminaBarRoot: {fileID: 0}
-  showOnlyWhileSprintHeld: 0
+  staminaBarRoot: {fileID: 1531037065}
+  showOnlyWhileSprintHeld: 1
+  fadeInDuration: 0.15
+  fadeOutDuration: 0.35
 --- !u!114 &98637248
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2446,6 +2448,8 @@ MonoBehaviour:
   staminaBar: {fileID: 1531037067}
   staminaBarRoot: {fileID: 0}
   showOnlyWhileSprintHeld: 1
+  fadeInDuration: 0.15
+  fadeOutDuration: 0.35
 --- !u!1 &1327693157
 GameObject:
   m_ObjectHideFlags: 0
@@ -3372,6 +3376,17 @@ Transform:
   - {fileID: 1640617838}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1743537568 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 600000043, guid: b15c8d6f22194966b15535b5e5c192c7, type: 3}
+  m_PrefabInstance: {fileID: 2120083673}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
 --- !u!1 &1744839798
 GameObject:
   m_ObjectHideFlags: 0
@@ -3862,6 +3877,18 @@ PrefabInstance:
       propertyPath: m_TextStyleHashCode
       value: -1183493901
       objectReference: {fileID: 0}
+    - target: {fileID: 2726572005038832069, guid: 5314561a36f9c55468fa94b68fc91d20, type: 3}
+      propertyPath: inventory
+      value: 
+      objectReference: {fileID: 1305600412}
+    - target: {fileID: 2726572005038832069, guid: 5314561a36f9c55468fa94b68fc91d20, type: 3}
+      propertyPath: saveSystem
+      value: 
+      objectReference: {fileID: 347464338}
+    - target: {fileID: 2726572005038832069, guid: 5314561a36f9c55468fa94b68fc91d20, type: 3}
+      propertyPath: playerController
+      value: 
+      objectReference: {fileID: 1305600407}
     - target: {fileID: 2945586149878629252, guid: 5314561a36f9c55468fa94b68fc91d20, type: 3}
       propertyPath: m_AdditionalShaderChannelsFlag
       value: 25
@@ -3957,6 +3984,10 @@ PrefabInstance:
     - target: {fileID: 8470398493287352606, guid: 5314561a36f9c55468fa94b68fc91d20, type: 3}
       propertyPath: m_Name
       value: Pause Menu
+      objectReference: {fileID: 0}
+    - target: {fileID: 8470398493287352606, guid: 5314561a36f9c55468fa94b68fc91d20, type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 8994524040738821489, guid: 5314561a36f9c55468fa94b68fc91d20, type: 3}
       propertyPath: m_TextStyleHashCode
@@ -4404,6 +4435,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 600000004, guid: b15c8d6f22194966b15535b5e5c192c7, type: 3}
+      propertyPath: stageDots.Array.size
+      value: 3
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -4770,6 +4805,18 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 600000004, guid: b15c8d6f22194966b15535b5e5c192c7, type: 3}
+      propertyPath: stageDots.Array.size
+      value: 5
+      objectReference: {fileID: 0}
+    - target: {fileID: 600000004, guid: b15c8d6f22194966b15535b5e5c192c7, type: 3}
+      propertyPath: 'stageDots.Array.data[3]'
+      value: 
+      objectReference: {fileID: 1743537568}
+    - target: {fileID: 600000004, guid: b15c8d6f22194966b15535b5e5c192c7, type: 3}
+      propertyPath: 'stageDots.Array.data[4]'
+      value: 
+      objectReference: {fileID: 1743537568}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
