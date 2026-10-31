@@ -134,82 +134,121 @@ public sealed class GameSaveSystem : MonoBehaviour
     }
 
     public void SaveGame()
+{
+    // Do not save while the game is paused.
+    // The pause menu's Save button must resume before calling this.
+    if (Time.timeScale <= 0f)
+        return;
+
+    var data = new GameSaveData
     {
-        var data = new GameSaveData
+        playerPosition = transform.position,
+        playerRotation = transform.rotation,
+        cameraLocalRotation = inventory != null
+            ? inventory.CameraLocalRotation
+            : Quaternion.identity,
+        inventoryCapacity = inventory != null
+            ? inventory.BaseInventoryCapacity
+            : 0,
+        carriedItemIds = inventory != null
+            ? inventory.GetCarriedItemIds()
+            : new List<string>(),
+        selectedItemIndex = inventory != null
+            ? inventory.SelectedItemIndex
+            : -1
+    };
+
+    foreach (Transform sceneTransform in sceneTransforms)
+    {
+        if (sceneTransform == null ||
+            !idsByTransform.TryGetValue(sceneTransform, out string id))
         {
-            playerPosition = transform.position,
-            playerRotation = transform.rotation,
-            cameraLocalRotation = inventory != null ? inventory.CameraLocalRotation : Quaternion.identity,
-            inventoryCapacity = inventory != null ? inventory.BaseInventoryCapacity : 0,
-            carriedItemIds = inventory != null ? inventory.GetCarriedItemIds() : new List<string>(),
-            selectedItemIndex = inventory != null ? inventory.SelectedItemIndex : -1
+            continue;
+        }
+
+        Rigidbody body = sceneTransform.GetComponent<Rigidbody>();
+
+        string parentId = sceneTransform.parent != null &&
+                          idsByTransform.TryGetValue(
+                              sceneTransform.parent,
+                              out string foundParentId)
+            ? foundParentId
+            : string.Empty;
+
+        var savedObject = new SavedSceneObject
+        {
+            id = id,
+            parentId = parentId,
+            active = sceneTransform.gameObject.activeSelf,
+            layer = sceneTransform.gameObject.layer,
+            localPosition = sceneTransform.localPosition,
+            localRotation = sceneTransform.localRotation,
+            localScale = sceneTransform.localScale,
+            worldPosition = sceneTransform.position,
+            worldRotation = sceneTransform.rotation,
+            hasRigidbody = body != null
         };
 
-        foreach (Transform sceneTransform in sceneTransforms)
+        Behaviour[] behaviours =
+            sceneTransform.GetComponents<Behaviour>();
+
+        savedObject.behavioursEnabled = new bool[behaviours.Length];
+
+        for (int i = 0; i < behaviours.Length; i++)
         {
-            if (sceneTransform == null || !idsByTransform.TryGetValue(sceneTransform, out string id))
-                continue;
-
-            Rigidbody body = sceneTransform.GetComponent<Rigidbody>();
-            string parentId = sceneTransform.parent != null &&
-                              idsByTransform.TryGetValue(sceneTransform.parent, out string foundParentId)
-                ? foundParentId
-                : string.Empty;
-
-            var savedObject = new SavedSceneObject
-            {
-                id = id,
-                parentId = parentId,
-                active = sceneTransform.gameObject.activeSelf,
-                layer = sceneTransform.gameObject.layer,
-                localPosition = sceneTransform.localPosition,
-                localRotation = sceneTransform.localRotation,
-                localScale = sceneTransform.localScale,
-                worldPosition = sceneTransform.position,
-                worldRotation = sceneTransform.rotation,
-                hasRigidbody = body != null
-            };
-
-            Behaviour[] behaviours = sceneTransform.GetComponents<Behaviour>();
-            savedObject.behavioursEnabled = new bool[behaviours.Length];
-            for (int i = 0; i < behaviours.Length; i++)
-                savedObject.behavioursEnabled[i] = behaviours[i].enabled;
-
-            Collider[] colliders = sceneTransform.GetComponents<Collider>();
-            savedObject.collidersEnabled = new bool[colliders.Length];
-            for (int i = 0; i < colliders.Length; i++)
-                savedObject.collidersEnabled[i] = colliders[i].enabled;
-
-            Renderer[] renderers = sceneTransform.GetComponents<Renderer>();
-            savedObject.renderersEnabled = new bool[renderers.Length];
-            for (int i = 0; i < renderers.Length; i++)
-                savedObject.renderersEnabled[i] = renderers[i].enabled;
-
-            if (body != null)
-            {
-                savedObject.isKinematic = body.isKinematic;
-                savedObject.useGravity = body.useGravity;
-                savedObject.detectCollisions = body.detectCollisions;
-                savedObject.velocity = body.linearVelocity;
-                savedObject.angularVelocity = body.angularVelocity;
-            }
-
-            data.objects.Add(savedObject);
+            savedObject.behavioursEnabled[i] = behaviours[i].enabled;
         }
 
-        try
-        {
-            string directory = Path.GetDirectoryName(SavePath);
-            if (!string.IsNullOrEmpty(directory))
-                Directory.CreateDirectory(directory);
+        Collider[] colliders =
+            sceneTransform.GetComponents<Collider>();
 
-            File.WriteAllText(SavePath, JsonUtility.ToJson(data, true));
-        }
-        catch (Exception exception)
+        savedObject.collidersEnabled = new bool[colliders.Length];
+
+        for (int i = 0; i < colliders.Length; i++)
         {
-            Debug.LogError($"Could not save game to '{SavePath}': {exception.Message}", this);
+            savedObject.collidersEnabled[i] = colliders[i].enabled;
         }
+
+        Renderer[] renderers =
+            sceneTransform.GetComponents<Renderer>();
+
+        savedObject.renderersEnabled = new bool[renderers.Length];
+
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            savedObject.renderersEnabled[i] = renderers[i].enabled;
+        }
+
+        if (body != null)
+        {
+            savedObject.isKinematic = body.isKinematic;
+            savedObject.useGravity = body.useGravity;
+            savedObject.detectCollisions = body.detectCollisions;
+            savedObject.velocity = body.linearVelocity;
+            savedObject.angularVelocity = body.angularVelocity;
+        }
+
+        data.objects.Add(savedObject);
     }
+
+    try
+    {
+        string directory = Path.GetDirectoryName(SavePath);
+
+        if (!string.IsNullOrEmpty(directory))
+            Directory.CreateDirectory(directory);
+
+        string json = JsonUtility.ToJson(data, true);
+        File.WriteAllText(SavePath, json);
+    }
+    catch (Exception exception)
+    {
+        Debug.LogError(
+            $"Could not save game to '{SavePath}': {exception.Message}",
+            this
+        );
+    }
+}
 
     public void LoadGame()
     {

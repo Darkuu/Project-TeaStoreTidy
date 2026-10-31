@@ -38,8 +38,7 @@ public sealed class PauseMenuController : MonoBehaviour
     public bool IsPaused => isPaused;
 
     // Also resets the singleton when domain reload is disabled.
-    [RuntimeInitializeOnLoadMethod(
-        RuntimeInitializeLoadType.SubsystemRegistration)]
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetStaticState()
     {
         instance = null;
@@ -229,8 +228,16 @@ public sealed class PauseMenuController : MonoBehaviour
 
     public void SaveGame()
     {
-        if (!isPaused || saveSystem == null)
+        if (instance != this ||
+            !isActiveAndEnabled ||
+            !isPaused ||
+            saveSystem == null)
+        {
             return;
+        }
+
+        ApplyPauseState(false);
+        lastStateChangeFrame = Time.frameCount;
 
         saveSystem.SaveGame();
     }
