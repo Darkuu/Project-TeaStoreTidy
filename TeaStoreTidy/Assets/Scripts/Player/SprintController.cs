@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 
+[DisallowMultipleComponent]
 public sealed class SprintController : MonoBehaviour
 {
     [Header("Base Sprint Settings")]
@@ -15,19 +16,35 @@ public sealed class SprintController : MonoBehaviour
     [SerializeField, Min(0f)] private float speedBonus;
 
     [Header("UI — Optional")]
-    [Tooltip("The fill Slider  of your stamina bar.")]
+    [Tooltip("The Slider displaying current stamina.")]
     [SerializeField] private Slider staminaBar;
 
-    [Tooltip("The bar's parent object, containing its background and fill.")]
+    [Tooltip(
+        "The UI object to fade, containing the whole stamina bar. " +
+        "Leave empty to use the Slider's GameObject."
+    )]
     [SerializeField] private GameObject staminaBarRoot;
 
-    [Tooltip("If enabled, only show the bar while Sprint is held.")]
+    // Retains your existing Inspector setting.
+    [Tooltip(
+        "When enabled, show while Sprint is held or stamina is recovering. " +
+        "When disabled, always show unless paused."
+    )]
     [SerializeField] private bool showOnlyWhileSprintHeld = true;
+
+    [Tooltip("Time in seconds to fade from fully hidden to fully visible.")]
+    [SerializeField, Min(0f)] private float fadeInDuration = 0.15f;
+
+    [Tooltip("Time in seconds to fade from fully visible to fully hidden.")]
+    [SerializeField, Min(0f)] private float fadeOutDuration = 0.35f;
 
     private float currentStamina;
     private bool initialized;
     private bool paused;
     private bool sprintHeld;
+
+    private CanvasGroup staminaCanvasGroup;
+    private float targetAlpha;
 
     public bool IsSprinting { get; private set; }
 
@@ -52,14 +69,52 @@ public sealed class SprintController : MonoBehaviour
     private void Awake()
     {
         InitializeIfNeeded();
+        SetupUI();
         UpdateStaminaBar();
+
+        // Start at the correct visibility without an initial flash.
+        if (staminaCanvasGroup != null)
+            staminaCanvasGroup.alpha = targetAlpha;
+    }
+
+    private void OnEnable()
+    {
+        UpdateStaminaBar();
+    }
+
+    private void Update()
+    {
+        // Fade independently of movement updates so hiding still works
+        // when the powers menu stops FirstPersonController.Move().
+        if (staminaCanvasGroup == null)
+            return;
+
+        float duration = targetAlpha > staminaCanvasGroup.alpha
+            ? fadeInDuration
+            : fadeOutDuration;
+
+        if (duration <= 0f)
+        {
+            staminaCanvasGroup.alpha = targetAlpha;
+            return;
+        }
+
+        staminaCanvasGroup.alpha = Mathf.MoveTowards(
+            staminaCanvasGroup.alpha,
+            targetAlpha,
+            Time.unscaledDeltaTime / duration
+        );
     }
 
     private void OnDisable()
     {
         IsSprinting = false;
         sprintHeld = false;
-        SetBarVisible(false);
+        targetAlpha = 0f;
+
+        // A disabled component cannot keep updating its fade.
+        if (staminaCanvasGroup != null)
+            staminaCanvasGroup.alpha = 0f;
     }
 
     private void InitializeIfNeeded()
@@ -69,6 +124,45 @@ public sealed class SprintController : MonoBehaviour
 
         currentStamina = MaximumStamina;
         initialized = true;
+    }
+
+    private void SetupUI()
+    {
+        if (staminaBar != null)
+        {
+            staminaBar.interactable = false;
+            staminaBar.wholeNumbers = false;
+        }
+
+        GameObject root = staminaBarRoot;
+
+        if (root == null && staminaBar != null)
+            root = staminaBar.gameObject;
+
+        if (root == null)
+            return;
+
+        // Fade only the UI, never the player or its parent objects.
+        if (transform.IsChildOf(root.transform))
+        {
+            Debug.LogError(
+                "Stamina Bar Root must be a separate UI object, " +
+                "not the player or an ancestor of the player.",
+                this
+            );
+            return;
+        }
+
+        staminaCanvasGroup = root.GetComponent<CanvasGroup>();
+
+        if (staminaCanvasGroup == null)
+            staminaCanvasGroup = root.AddComponent<CanvasGroup>();
+
+        staminaCanvasGroup.interactable = false;
+        staminaCanvasGroup.blocksRaycasts = false;
+
+        // Keep the UI active; visibility is controlled through alpha.
+        root.SetActive(true);
     }
 
     /// <summary>
@@ -86,11 +180,12 @@ public sealed class SprintController : MonoBehaviour
         {
             IsSprinting = false;
             sprintHeld = false;
-            SetBarVisible(false);
+            targetAlpha = 0f;
             return 0f;
         }
 
-        // Also handles reducing maximum stamina in the Inspector.
+        deltaTime = Mathf.Max(0f, deltaTime);
+
         currentStamina = Mathf.Clamp(
             currentStamina,
             0f,
@@ -114,8 +209,7 @@ public sealed class SprintController : MonoBehaviour
         }
         else if (!sprintHeld)
         {
-            // Matches the original behavior:
-            // release Sprint before stamina can recharge.
+            // Release Sprint before stamina can recharge.
             currentStamina = Mathf.Min(
                 MaximumStamina,
                 currentStamina + RechargeRate * deltaTime
@@ -141,8 +235,8 @@ public sealed class SprintController : MonoBehaviour
     }
 
     /// <summary>
-    /// Sets total upgrade bonuses, rather than adding to them.
-    /// Increasing maximum stamina also grants the added capacity.
+    /// Sets total upgrade bonuses rather than adding to them.
+    /// Increasing maximum stamina grants the added capacity.
     /// </summary>
     public void SetSprintUpgrades(
         float extraStamina,
@@ -171,30 +265,31 @@ public sealed class SprintController : MonoBehaviour
 
     private void UpdateStaminaBar()
     {
+        float maximum = MaximumStamina;
+
         if (staminaBar != null)
         {
-            staminaBar.minValue = 0f;
-            staminaBar.maxValue = MaximumStamina;
-            staminaBar.value = currentStamina;
+            if (staminaBar.minValue != 0f)
+                staminaBar.minValue = 0f;
+
+            if (staminaBar.maxValue != maximum)
+                staminaBar.maxValue = maximum;
+
+            // Updating a display should not trigger gameplay callbacks.
+            staminaBar.SetValueWithoutNotify(currentStamina);
         }
+
+        bool staminaNotFull = currentStamina < maximum;
 
         bool visible =
             isActiveAndEnabled &&
             !paused &&
-            (!showOnlyWhileSprintHeld || sprintHeld);
+            (
+                !showOnlyWhileSprintHeld ||
+                sprintHeld ||
+                staminaNotFull
+            );
 
-        SetBarVisible(visible);
-    }
-
-    private void SetBarVisible(bool visible)
-    {
-        if (staminaBarRoot != null)
-        {
-            staminaBarRoot.SetActive(visible);
-        }
-        else if (staminaBar != null)
-        {
-            staminaBar.gameObject.SetActive(visible);
-        }
+        targetAlpha = visible ? 1f : 0f;
     }
 }
