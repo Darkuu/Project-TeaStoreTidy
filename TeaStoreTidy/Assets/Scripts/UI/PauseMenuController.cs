@@ -15,8 +15,6 @@ public sealed class PauseMenuController : MonoBehaviour
     private const string VolumeKey = "MasterVolume";
     private const string QualityKey = "Quality";
     private const string FullscreenKey = "Fullscreen";
-
-    // Dimensions are more reliable than a resolution-list index.
     private const string ResolutionWidthKey = "ResolutionWidth";
     private const string ResolutionHeightKey = "ResolutionHeight";
 
@@ -29,12 +27,8 @@ public sealed class PauseMenuController : MonoBehaviour
     [SerializeField] private Button quitToMenuButton;
     [SerializeField] private Button quitToDesktopButton;
 
-    [Header("Settings Panels")]
-    [Tooltip("The panel containing Resume, Save, Settings and Quit. " +
-             "This must be a child of Menu Root, not Menu Root itself.")]
-    [SerializeField] private GameObject pausePanel;
-
-    [Tooltip("The settings panel. This must also be inside Menu Root.")]
+    [Header("Settings Panel")]
+    [Tooltip("Assign Settings Root. It should be separate from Menu Root.")]
     [SerializeField] private GameObject settingsPanel;
 
     [Header("Settings Navigation")]
@@ -51,6 +45,29 @@ public sealed class PauseMenuController : MonoBehaviour
     [SerializeField] private AudioMixer audioMixer;
     [SerializeField] private string masterVolumeParameter = "MasterVolume";
 
+    [Header("Keybindings Panel")]
+    [SerializeField] private GameObject keyBindingsPanel;
+    [SerializeField] private Button keyBindingsButton;
+    [SerializeField] private Button backFromBindingsButton;
+
+    [Header("Rebinding")]
+    [SerializeField] private InputActionAsset inputActions;
+
+    [Tooltip("Optional: assign the player's PlayerInput so rebinding " +
+             "uses its runtime action asset.")]
+    [SerializeField] private PlayerInput playerInput;
+
+    [SerializeField] private Transform bindingRowsParent;
+    [SerializeField] private Transform controllerBindingRowsParent;
+    [SerializeField] private RebindRow rebindRowPrefab;
+    [SerializeField] private TMP_Text statusText;
+
+    [Header("Binding Tabs")]
+    [SerializeField] private Button keyboardBindingsTabButton;
+    [SerializeField] private Button controllerBindingsTabButton;
+    [SerializeField] private GameObject keyboardBindingsContainer;
+    [SerializeField] private GameObject controllerBindingsContainer;
+
     [Header("References — Auto-found in parents if empty")]
     [SerializeField] private FirstPersonController playerController;
     [SerializeField] private PlayerInventory inventory;
@@ -62,11 +79,20 @@ public sealed class PauseMenuController : MonoBehaviour
     private readonly List<Vector2Int> availableResolutions =
         new List<Vector2Int>();
 
+    private readonly List<Button> rebindButtons = new List<Button>();
+
     private bool isPaused;
     private bool settingsOpen;
+    private bool bindingsOpen;
     private bool settingsInitialized;
     private bool preferencesDirty;
     private bool settingsPanelsValid;
+    private bool bindingsPanelValid;
+
+    // RebindRow remains unchanged. The controller tracks its button
+    // and completion callback to prevent navigation during rebinding.
+    private bool rebindInProgress;
+    private int rebindFinishedFrame = -1;
 
     private int lastStateChangeFrame = -1;
     private int lastNavigationFrame = -1;
@@ -82,6 +108,10 @@ public sealed class PauseMenuController : MonoBehaviour
     private bool desiredFullscreen;
 
     public bool IsPaused => isPaused;
+
+    private bool NavigationBlocked =>
+        rebindInProgress ||
+        rebindFinishedFrame == Time.frameCount;
 
     [RuntimeInitializeOnLoadMethod(
         RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -99,12 +129,11 @@ public sealed class PauseMenuController : MonoBehaviour
             return;
         }
 
-        // The controller must remain active while the menu is hidden.
         if (transform.IsChildOf(menuRoot.transform))
         {
             Debug.LogError(
                 "PauseMenuController must be outside Menu Root. " +
-                "Put it on an always-active parent or separate object.",
+                "Put it on the always-active Pause Menu parent.",
                 this);
 
             enabled = false;
@@ -114,11 +143,9 @@ public sealed class PauseMenuController : MonoBehaviour
         if (instance != null && instance != this)
         {
             Debug.LogWarning(
-                "Duplicate PauseMenuController detected. " +
-                "Only one pause controller may handle Escape.",
+                "Duplicate PauseMenuController detected.",
                 this);
 
-            // Avoid hiding the valid controller's menu if shared.
             if (menuRoot != instance.menuRoot)
                 menuRoot.SetActive(false);
 
@@ -137,6 +164,9 @@ public sealed class PauseMenuController : MonoBehaviour
         if (saveSystem == null)
             saveSystem = GetComponentInParent<GameSaveSystem>();
 
+        if (playerInput == null)
+            playerInput = GetComponentInParent<PlayerInput>();
+
         Bind(resumeButton, Resume);
         Bind(saveGameButton, SaveGame);
         Bind(quitToMenuButton, QuitToMenu);
@@ -145,16 +175,29 @@ public sealed class PauseMenuController : MonoBehaviour
         Bind(settingsButton, OpenSettings);
         Bind(backFromSettingsButton, CloseSettings);
 
-        if (saveGameButton != null)
-            saveGameButton.interactable = saveSystem != null;
+        Bind(keyBindingsButton, OpenKeyBindings);
+        Bind(backFromBindingsButton, CloseKeyBindings);
+        Bind(keyboardBindingsTabButton, ShowKeyboardTab);
+        Bind(controllerBindingsTabButton, ShowControllerTab);
 
-        settingsPanelsValid = ValidateSettingsPanels();
+        settingsPanelsValid = ValidateSettingsPanel();
+        bindingsPanelValid = ValidateBindingsPanel();
 
         if (settingsButton != null)
             settingsButton.interactable = settingsPanelsValid;
 
+        if (keyBindingsButton != null)
+            keyBindingsButton.interactable =
+                settingsPanelsValid && bindingsPanelValid;
+
+        if (saveGameButton != null)
+            saveGameButton.interactable = saveSystem != null;
+
         if (settingsPanelsValid)
             settingsPanel.SetActive(false);
+
+        if (bindingsPanelValid)
+            keyBindingsPanel.SetActive(false);
 
         menuRoot.SetActive(false);
     }
@@ -164,29 +207,33 @@ public sealed class PauseMenuController : MonoBehaviour
         if (instance != this)
             return;
 
-        // AudioMixer.SetFloat should be called in Start or later.
+        // Mixer changes are initialized in Start, not Awake.
         InitializeSettings();
+
+        if (inputActions == null && inventory != null)
+            inputActions = inventory.InputActions;
+
+        // PlayerInput may use a runtime copy of the action asset.
+        if (playerInput != null && playerInput.actions != null)
+            inputActions = playerInput.actions;
+
+        InputBindingPersistence.Apply(inputActions);
+
+        BuildRebindRows();
+        ShowBindingTab(false);
     }
 
-    private bool ValidateSettingsPanels()
+    private bool ValidateSettingsPanel()
     {
         if (settingsPanel == null)
-        {
-            Debug.LogWarning(
-                "Assign Settings Root to the Settings Panel field.",
-                this);
-
             return false;
-        }
 
-        if (settingsPanel == menuRoot ||
-            settingsPanel.transform.IsChildOf(menuRoot.transform) ||
-            menuRoot.transform.IsChildOf(settingsPanel.transform) ||
+        if (!AreSeparatePanels(menuRoot, settingsPanel) ||
             transform.IsChildOf(settingsPanel.transform))
         {
             Debug.LogError(
                 "Menu Root and Settings Root must be separate panels. " +
-                "Place PauseMenuController on their always-active parent.",
+                "The controller must remain outside both.",
                 this);
 
             return false;
@@ -195,28 +242,58 @@ public sealed class PauseMenuController : MonoBehaviour
         return true;
     }
 
+    private bool ValidateBindingsPanel()
+    {
+        if (keyBindingsPanel == null)
+            return false;
+
+        if (!AreSeparatePanels(menuRoot, keyBindingsPanel) ||
+            (settingsPanel != null &&
+             !AreSeparatePanels(settingsPanel, keyBindingsPanel)) ||
+            transform.IsChildOf(keyBindingsPanel.transform))
+        {
+            Debug.LogError(
+                "Key Bindings Root must be separate from Menu Root " +
+                "and Settings Root. Keep the controller outside all panels.",
+                this);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool AreSeparatePanels(GameObject first, GameObject second)
+    {
+        return first != second &&
+               !first.transform.IsChildOf(second.transform) &&
+               !second.transform.IsChildOf(first.transform);
+    }
+
     private void Update()
     {
-        if (instance != this)
+        if (instance != this || NavigationBlocked)
             return;
 
         if (Keyboard.current == null ||
-            !Keyboard.current.escapeKey.wasPressedThisFrame)
+            !Keyboard.current.escapeKey.wasPressedThisFrame ||
+            lastNavigationFrame == Time.frameCount)
         {
             return;
         }
 
-        // Prevent Escape and a UI callback from navigating twice.
-        if (lastNavigationFrame == Time.frameCount)
-            return;
-
-        if (isPaused && settingsOpen)
+        if (isPaused && bindingsOpen)
+        {
+            CloseKeyBindings();
+        }
+        else if (isPaused && settingsOpen)
         {
             CloseSettings();
-            return;
         }
-
-        SetPaused(!isPaused);
+        else
+        {
+            SetPaused(!isPaused);
+        }
     }
 
     private void OnDisable()
@@ -240,13 +317,19 @@ public sealed class PauseMenuController : MonoBehaviour
         Unbind(settingsButton, OpenSettings);
         Unbind(backFromSettingsButton, CloseSettings);
 
+        Unbind(keyBindingsButton, OpenKeyBindings);
+        Unbind(backFromBindingsButton, CloseKeyBindings);
+        Unbind(keyboardBindingsTabButton, ShowKeyboardTab);
+        Unbind(controllerBindingsTabButton, ShowControllerTab);
+
+        foreach (Button button in rebindButtons)
+            Unbind(button, OnRebindButtonClicked);
+
         if (settingsInitialized)
         {
             if (masterVolumeSlider != null)
-            {
                 masterVolumeSlider.onValueChanged.RemoveListener(
                     SetMasterVolume);
-            }
 
             if (qualityDropdown != null)
                 qualityDropdown.onValueChanged.RemoveListener(SetQuality);
@@ -297,14 +380,14 @@ public sealed class PauseMenuController : MonoBehaviour
 
     public void SetPaused(bool paused)
     {
-        if (instance != this || !isActiveAndEnabled)
+        if (instance != this ||
+            !isActiveAndEnabled ||
+            NavigationBlocked ||
+            isPaused == paused ||
+            lastStateChangeFrame == Time.frameCount)
+        {
             return;
-
-        if (isPaused == paused)
-            return;
-
-        if (lastStateChangeFrame == Time.frameCount)
-            return;
+        }
 
         lastStateChangeFrame = Time.frameCount;
         lastNavigationFrame = Time.frameCount;
@@ -340,7 +423,6 @@ public sealed class PauseMenuController : MonoBehaviour
             Time.timeScale = 0f;
 
             ShowPausePanel();
-            menuRoot.SetActive(true);
 
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
@@ -350,9 +432,6 @@ public sealed class PauseMenuController : MonoBehaviour
             ShowPausePanel();
             FlushPreferences();
 
-            if (menuRoot != null)
-                menuRoot.SetActive(false);
-
             Time.timeScale = previousTimeScale;
 
             if (playerController != null)
@@ -361,8 +440,6 @@ public sealed class PauseMenuController : MonoBehaviour
             if (inventory != null)
                 inventory.enabled = inventoryWasEnabled;
 
-            // Restore after enabling the player, because its OnEnable
-            // may also change the cursor.
             Cursor.lockState = previousCursorLock;
             Cursor.visible = previousCursorVisible;
         }
@@ -371,9 +448,13 @@ public sealed class PauseMenuController : MonoBehaviour
     private void ShowPausePanel()
     {
         settingsOpen = false;
+        bindingsOpen = false;
 
         if (settingsPanelsValid && settingsPanel != null)
             settingsPanel.SetActive(false);
+
+        if (bindingsPanelValid && keyBindingsPanel != null)
+            keyBindingsPanel.SetActive(false);
 
         if (menuRoot != null)
             menuRoot.SetActive(isPaused);
@@ -384,7 +465,8 @@ public sealed class PauseMenuController : MonoBehaviour
         if (instance != this ||
             !isActiveAndEnabled ||
             !isPaused ||
-            !settingsPanelsValid)
+            !settingsPanelsValid ||
+            NavigationBlocked)
         {
             return;
         }
@@ -393,21 +475,304 @@ public sealed class PauseMenuController : MonoBehaviour
         RefreshSettingsControls();
 
         settingsOpen = true;
+        bindingsOpen = false;
         lastNavigationFrame = Time.frameCount;
 
         menuRoot.SetActive(false);
+
+        if (bindingsPanelValid)
+            keyBindingsPanel.SetActive(false);
+
         settingsPanel.SetActive(true);
     }
 
     public void CloseSettings()
     {
-        if (instance != this || !isPaused || !settingsOpen)
+        if (instance != this ||
+            !isPaused ||
+            !settingsOpen ||
+            NavigationBlocked)
+        {
             return;
+        }
 
         lastNavigationFrame = Time.frameCount;
-
         ShowPausePanel();
         FlushPreferences();
+    }
+
+    public void OpenKeyBindings()
+    {
+        if (instance != this ||
+            !isActiveAndEnabled ||
+            !isPaused ||
+            !settingsPanelsValid ||
+            !bindingsPanelValid ||
+            NavigationBlocked)
+        {
+            return;
+        }
+
+        settingsOpen = false;
+        bindingsOpen = true;
+        lastNavigationFrame = Time.frameCount;
+
+        menuRoot.SetActive(false);
+        settingsPanel.SetActive(false);
+        keyBindingsPanel.SetActive(true);
+
+        ShowBindingTab(false);
+        SetStatus(string.Empty);
+    }
+
+    public void CloseKeyBindings()
+    {
+        if (instance != this ||
+            !isPaused ||
+            !bindingsOpen ||
+            NavigationBlocked)
+        {
+            return;
+        }
+
+        OpenSettings();
+        FlushPreferences();
+    }
+
+    private void ShowKeyboardTab()
+    {
+        if (!NavigationBlocked)
+            ShowBindingTab(false);
+    }
+
+    private void ShowControllerTab()
+    {
+        if (!NavigationBlocked)
+            ShowBindingTab(true);
+    }
+
+    private void ShowBindingTab(bool showController)
+    {
+        if (keyboardBindingsContainer != null)
+            keyboardBindingsContainer.SetActive(!showController);
+
+        if (controllerBindingsContainer != null)
+            controllerBindingsContainer.SetActive(showController);
+    }
+
+    private void BuildRebindRows()
+    {
+        if (!bindingsPanelValid ||
+            inputActions == null ||
+            rebindRowPrefab == null)
+        {
+            return;
+        }
+
+        InputActionMap map = inputActions.FindActionMap("Player", false);
+
+        if (map == null)
+        {
+            Debug.LogWarning(
+                "The input action asset has no 'Player' action map.",
+                this);
+
+            return;
+        }
+
+        string[] actionNames =
+        {
+            "Move", "Look", "Interact", "Drop",
+            "CycleItems", "Jump", "Sprint", "ScentTrail"
+        };
+
+        foreach (string actionName in actionNames)
+        {
+            InputAction action = map.FindAction(actionName, false);
+
+            if (action == null)
+                continue;
+
+            for (int i = 0; i < action.bindings.Count; i++)
+            {
+                InputBinding binding = action.bindings[i];
+
+                if (binding.isComposite)
+                    continue;
+
+                string path = binding.path ?? string.Empty;
+
+                if (IsKeyboardOrMouseBinding(binding))
+                {
+                    if (IsDuplicateMoveArrowBinding(actionName, binding))
+                        continue;
+
+                    if (path == "<Pointer>/delta" ||
+                        path == "<Mouse>/delta")
+                    {
+                        continue;
+                    }
+
+                    CreateBindingRow(
+                        bindingRowsParent, action, i, binding, actionName);
+                }
+                else if (IsGamepadBinding(binding))
+                {
+                    CreateBindingRow(
+                        controllerBindingRowsParent,
+                        action, i, binding, actionName);
+                }
+            }
+        }
+    }
+
+    private void CreateBindingRow(
+        Transform parent,
+        InputAction action,
+        int index,
+        InputBinding binding,
+        string actionName)
+    {
+        if (parent == null)
+            return;
+
+        RebindRow row = Instantiate(rebindRowPrefab, parent);
+
+        row.Initialize(
+            inputActions,
+            action,
+            index,
+            GetBindingLabel(actionName, binding),
+            OnRebindReported);
+
+        // Your supplied row has one button. Add our listener AFTER
+        // Initialize so RebindRow begins its operation first.
+        Button button = row.GetComponentInChildren<Button>(true);
+
+        if (button == null)
+        {
+            Debug.LogWarning(
+                "The RebindRow prefab needs a Rebind button.",
+                row);
+
+            return;
+        }
+
+        rebindButtons.Add(button);
+        button.onClick.AddListener(OnRebindButtonClicked);
+    }
+
+    private void OnRebindButtonClicked()
+    {
+        // RebindRow disables its own button when rebinding begins.
+        bool started = false;
+
+        foreach (Button button in rebindButtons)
+        {
+            if (button != null && !button.interactable)
+            {
+                started = true;
+                break;
+            }
+        }
+
+        if (!started)
+            return;
+
+        rebindInProgress = true;
+
+        // Prevent a second row from starting another operation.
+        foreach (Button button in rebindButtons)
+        {
+            if (button != null)
+                button.interactable = false;
+        }
+
+        SetStatus("Press a control. Press Escape to cancel.");
+    }
+
+    private void OnRebindReported(string message)
+    {
+        // These are the completion/cancellation callbacks supplied
+        // by your existing RebindRow.
+        if (this == null)
+            return;
+
+        rebindInProgress = false;
+        rebindFinishedFrame = Time.frameCount;
+
+        foreach (Button button in rebindButtons)
+        {
+            if (button != null)
+                button.interactable = true;
+        }
+
+        SetStatus(message);
+    }
+
+    private static bool IsDuplicateMoveArrowBinding(
+        string actionName,
+        InputBinding binding)
+    {
+        if (actionName != "Move" || !binding.isPartOfComposite)
+            return false;
+
+        string path = binding.path ?? string.Empty;
+
+        return path == "<Keyboard>/upArrow" ||
+               path == "<Keyboard>/downArrow" ||
+               path == "<Keyboard>/leftArrow" ||
+               path == "<Keyboard>/rightArrow";
+    }
+
+    private static string GetBindingLabel(
+        string actionName,
+        InputBinding binding)
+    {
+        if (actionName == "Move" && binding.isPartOfComposite)
+        {
+            switch (binding.name)
+            {
+                case "up": return "Move Forward";
+                case "down": return "Move Backward";
+                case "left": return "Move Left";
+                case "right": return "Move Right";
+            }
+        }
+
+        switch (actionName)
+        {
+            case "Interact": return "Interact / Pick Up / Place";
+            case "Drop": return "Drop Item";
+            case "CycleItems": return "Change Held Item";
+            case "ScentTrail": return "Scent Trail Ability";
+            default: return actionName;
+        }
+    }
+
+    private static bool IsKeyboardOrMouseBinding(InputBinding binding)
+    {
+        string groups = binding.groups ?? string.Empty;
+        string path = binding.path ?? string.Empty;
+
+        return groups.Contains("Keyboard&Mouse") ||
+               path.StartsWith("<Keyboard>") ||
+               path.StartsWith("<Mouse>");
+    }
+
+    private static bool IsGamepadBinding(InputBinding binding)
+    {
+        string groups = binding.groups ?? string.Empty;
+        string path = binding.path ?? string.Empty;
+
+        return groups.Contains("Gamepad") ||
+               path.StartsWith("<Gamepad>");
+    }
+
+    private void SetStatus(string message)
+    {
+        if (statusText != null)
+            statusText.text = message;
     }
 
     private void InitializeSettings()
@@ -422,7 +787,6 @@ public sealed class PauseMenuController : MonoBehaviour
             masterVolumeSlider.minValue = 0f;
             masterVolumeSlider.maxValue = 1f;
             masterVolumeSlider.wholeNumbers = false;
-
             masterVolumeSlider.onValueChanged.AddListener(SetMasterVolume);
         }
 
@@ -457,8 +821,6 @@ public sealed class PauseMenuController : MonoBehaviour
         foreach (Resolution resolution in Screen.resolutions)
             AddResolution(resolution.width, resolution.height);
 
-        // Screen.resolutions may be empty, or omit the current
-        // windowed size.
         AddResolution(Screen.width, Screen.height);
 
         if (resolutionDropdown == null)
@@ -496,8 +858,7 @@ public sealed class PauseMenuController : MonoBehaviour
         {
             int index = Mathf.Clamp(
                 PlayerPrefs.GetInt(
-                    QualityKey,
-                    QualitySettings.GetQualityLevel()),
+                    QualityKey, QualitySettings.GetQualityLevel()),
                 0,
                 QualitySettings.names.Length - 1);
 
@@ -507,24 +868,21 @@ public sealed class PauseMenuController : MonoBehaviour
         desiredWidth = Screen.width;
         desiredHeight = Screen.height;
 
-        desiredFullscreen =
-            PlayerPrefs.GetInt(
-                FullscreenKey,
-                Screen.fullScreen ? 1 : 0) != 0;
+        desiredFullscreen = PlayerPrefs.GetInt(
+            FullscreenKey, Screen.fullScreen ? 1 : 0) != 0;
 
-        bool hasSavedDimensions =
+        bool hasDimensions =
             PlayerPrefs.HasKey(ResolutionWidthKey) &&
             PlayerPrefs.HasKey(ResolutionHeightKey);
 
         bool hasLegacyResolution = PlayerPrefs.HasKey("Resolution");
 
-        if (hasSavedDimensions)
+        if (hasDimensions)
         {
             Vector2Int savedSize = new Vector2Int(
                 PlayerPrefs.GetInt(ResolutionWidthKey),
                 PlayerPrefs.GetInt(ResolutionHeightKey));
 
-            // Ignore unsupported resolutions from a previous display.
             if (availableResolutions.Contains(savedSize))
             {
                 desiredWidth = savedSize.x;
@@ -533,8 +891,6 @@ public sealed class PauseMenuController : MonoBehaviour
         }
         else if (hasLegacyResolution && availableResolutions.Count > 0)
         {
-            // Best-effort compatibility with your main menu's
-            // existing index-based resolution preference.
             int index = Mathf.Clamp(
                 PlayerPrefs.GetInt("Resolution"),
                 0,
@@ -544,7 +900,7 @@ public sealed class PauseMenuController : MonoBehaviour
             desiredHeight = availableResolutions[index].y;
         }
 
-        if (hasSavedDimensions ||
+        if (hasDimensions ||
             hasLegacyResolution ||
             PlayerPrefs.HasKey(FullscreenKey))
         {
@@ -575,10 +931,9 @@ public sealed class PauseMenuController : MonoBehaviour
             int index = availableResolutions.IndexOf(
                 new Vector2Int(desiredWidth, desiredHeight));
 
-            if (index < 0)
-                index = 0;
+            resolutionDropdown.SetValueWithoutNotify(
+                index < 0 ? 0 : index);
 
-            resolutionDropdown.SetValueWithoutNotify(index);
             resolutionDropdown.RefreshShownValue();
         }
 
@@ -591,7 +946,6 @@ public sealed class PauseMenuController : MonoBehaviour
         value = Mathf.Clamp01(value);
 
         ApplyMasterVolume(value);
-
         PlayerPrefs.SetFloat(VolumeKey, value);
         preferencesDirty = true;
     }
@@ -601,10 +955,9 @@ public sealed class PauseMenuController : MonoBehaviour
         if (audioMixer != null &&
             !string.IsNullOrWhiteSpace(masterVolumeParameter))
         {
-            float decibels =
-                value <= 0.0001f
-                    ? -80f
-                    : Mathf.Log10(value) * 20f;
+            float decibels = value <= 0.0001f
+                ? -80f
+                : Mathf.Log10(value) * 20f;
 
             if (!audioMixer.SetFloat(masterVolumeParameter, decibels))
             {
@@ -626,7 +979,6 @@ public sealed class PauseMenuController : MonoBehaviour
             return;
 
         QualitySettings.SetQualityLevel(index, true);
-
         PlayerPrefs.SetInt(QualityKey, index);
         preferencesDirty = true;
     }
@@ -656,9 +1008,6 @@ public sealed class PauseMenuController : MonoBehaviour
         if (desiredWidth <= 0 || desiredHeight <= 0)
             return;
 
-        // Resolution changes are applied asynchronously, so retain
-        // the requested dimensions instead of reading Screen.width
-        // immediately after a change.
         Screen.SetResolution(
             desiredWidth,
             desiredHeight,
@@ -671,7 +1020,7 @@ public sealed class PauseMenuController : MonoBehaviour
         PlayerPrefs.SetInt(ResolutionHeightKey, desiredHeight);
         PlayerPrefs.SetInt(FullscreenKey, desiredFullscreen ? 1 : 0);
 
-        // Keep your unchanged main menu compatible.
+        // Retain compatibility with the unchanged main menu.
         int index = availableResolutions.IndexOf(
             new Vector2Int(desiredWidth, desiredHeight));
 
@@ -700,12 +1049,13 @@ public sealed class PauseMenuController : MonoBehaviour
         if (instance != this ||
             !isActiveAndEnabled ||
             !isPaused ||
-            saveSystem == null)
+            saveSystem == null ||
+            NavigationBlocked)
         {
             return;
         }
 
-        // Preserve your existing save-and-resume behavior.
+        // Preserve your original save-and-resume behavior.
         ApplyPauseState(false);
 
         lastStateChangeFrame = Time.frameCount;
@@ -716,8 +1066,12 @@ public sealed class PauseMenuController : MonoBehaviour
 
     public void QuitToMenu()
     {
-        if (instance != this || !isActiveAndEnabled)
+        if (instance != this ||
+            !isActiveAndEnabled ||
+            NavigationBlocked)
+        {
             return;
+        }
 
         if (string.IsNullOrWhiteSpace(mainMenuSceneName) ||
             !Application.CanStreamedLevelBeLoaded(mainMenuSceneName))
@@ -740,8 +1094,12 @@ public sealed class PauseMenuController : MonoBehaviour
 
     public void QuitToDesktop()
     {
-        if (instance != this || !isActiveAndEnabled)
+        if (instance != this ||
+            !isActiveAndEnabled ||
+            NavigationBlocked)
+        {
             return;
+        }
 
         PrepareToQuit();
 
@@ -754,8 +1112,6 @@ public sealed class PauseMenuController : MonoBehaviour
 
     private void PrepareToQuit()
     {
-        // Restore first so destruction cannot restore an old time scale
-        // after preparing the scene transition.
         if (isPaused)
             ApplyPauseState(false);
 

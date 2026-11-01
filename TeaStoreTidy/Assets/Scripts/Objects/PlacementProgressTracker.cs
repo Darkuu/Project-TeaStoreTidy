@@ -91,9 +91,9 @@ public sealed class PlacementProgressTracker : MonoBehaviour
 
     private void Start()
     {
-        playerController = FindFirstObjectByType<FirstPersonController>();
+        playerController = FindAnyObjectByType<FirstPersonController>();
 
-        placementSpots = FindObjectsByType<PlacementSpot>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        placementSpots = FindObjectsByType<PlacementSpot>(FindObjectsInactive.Exclude);
         if (powersMenu != null)
             powersMenu.SetActive(false);
         SetupSortingMenu();
@@ -300,10 +300,10 @@ public sealed class PlacementProgressTracker : MonoBehaviour
             }
         }
 
-        PlayerInventory inventory = FindFirstObjectByType<PlayerInventory>();
+        PlayerInventory inventory = FindAnyObjectByType<PlayerInventory>();
         if (inventory != null)
             inventory.SetSkillCapacityBonus(inventoryBonus);
-        ScentTrailPower scentTrail = FindFirstObjectByType<ScentTrailPower>();
+        ScentTrailPower scentTrail = FindAnyObjectByType<ScentTrailPower>();
         if (scentTrail != null)
         {
             scentTrail.SetUnlocked(scentUnlocked);
