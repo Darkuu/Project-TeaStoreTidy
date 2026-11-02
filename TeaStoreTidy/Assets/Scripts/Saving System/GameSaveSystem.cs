@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -31,12 +32,23 @@ public sealed class SavedSceneObject
     public bool[] behavioursEnabled;
     public bool[] collidersEnabled;
     public bool[] renderersEnabled;
+
+    public SavedComponentState[] behaviourStates;
+    public SavedComponentState[] colliderStates;
+    public SavedComponentState[] rendererStates;
+}
+
+[Serializable]
+public sealed class SavedComponentState
+{
+    public string key;
+    public bool enabled;
 }
 
 [Serializable]
 public sealed class GameSaveData
 {
-    public int version = 2;
+    public int version = 3;
 
     public List<SavedSceneObject> objects =
         new List<SavedSceneObject>();
@@ -51,12 +63,14 @@ public sealed class GameSaveData
     public Quaternion cameraLocalRotation;
 
     public int inventoryCapacity;
+    public float sprintStamina;
+    public float scentCooldownRemaining;
 }
 
 /// <summary>
 /// Saves scene objects, player position/rotation, camera rotation,
-/// and inventory to persistent storage.
-/// Attach to the player GameObject.
+/// inventory, sprint state, and scene objects to persistent storage.
+/// Attach to the player or one of its children.
 /// </summary>
 [DisallowMultipleComponent]
 public sealed class GameSaveSystem : MonoBehaviour
@@ -78,8 +92,11 @@ public sealed class GameSaveSystem : MonoBehaviour
         new Dictionary<string, Transform>();
 
     private Transform[] sceneTransforms;
+    private Transform playerTransform;
     private PlayerInventory inventory;
     private FirstPersonController playerController;
+    private SprintController sprintController;
+    private ScentTrailPower scentTrailPower;
 
     private float nextAutosaveTime;
     private bool isLoading;
@@ -109,38 +126,14 @@ public sealed class GameSaveSystem : MonoBehaviour
 
     private void Awake()
     {
-        inventory = GetComponent<PlayerInventory>();
-        playerController = GetComponent<FirstPersonController>();
-
-        sceneTransforms = FindObjectsByType<Transform>(
-            FindObjectsInactive.Include,
-            FindObjectsSortMode.None
-        );
-
-        foreach (Transform sceneTransform in sceneTransforms)
-        {
-            if (sceneTransform == null)
-                continue;
-
-            string id = PersistentSceneId.FromTransform(sceneTransform);
-
-            if (string.IsNullOrEmpty(id))
-                continue;
-
-            if (transformsById.ContainsKey(id))
-            {
-                Debug.LogWarning(
-                    $"Duplicate persistent scene ID '{id}'. " +
-                    "Check PersistentSceneId generation.",
-                    sceneTransform
-                );
-
-                continue;
-            }
-
-            idsByTransform[sceneTransform] = id;
-            transformsById[id] = sceneTransform;
-        }
+        inventory = GetComponentInParent<PlayerInventory>();
+        playerController = GetComponentInParent<FirstPersonController>();
+        sprintController = GetComponentInParent<SprintController>();
+        scentTrailPower = GetComponentInParent<ScentTrailPower>();
+        playerTransform = playerController != null
+            ? playerController.transform
+            : inventory != null ? inventory.transform : transform;
+        RefreshSceneObjectRegistry(true);
     }
 
     private void Start()
@@ -151,8 +144,16 @@ public sealed class GameSaveSystem : MonoBehaviour
         if (loadRequestedOnNextGameScene)
         {
             loadRequestedOnNextGameScene = false;
-            LoadGame();
+            StartCoroutine(LoadAfterSceneInitialization());
         }
+    }
+
+    private System.Collections.IEnumerator LoadAfterSceneInitialization()
+    {
+        // Let Start methods such as ShelfObjectSpawner create their runtime items first.
+        yield return null;
+        RefreshSceneObjectRegistry(false);
+        LoadGame();
     }
 
     private void Update()
@@ -190,16 +191,16 @@ public sealed class GameSaveSystem : MonoBehaviour
 
     public void SaveGame()
     {
-        // The pause-menu Save button must resume before calling this.
-        if (Time.timeScale <= 0f || isLoading)
+        if (isLoading)
             return;
 
         try
         {
+            RefreshSceneObjectRegistry(false);
             var data = new GameSaveData
             {
-                playerPosition = transform.position,
-                playerRotation = transform.rotation,
+                playerPosition = playerTransform.position,
+                playerRotation = playerTransform.rotation,
 
                 cameraLocalRotation = inventory != null
                     ? inventory.CameraLocalRotation
@@ -215,7 +216,15 @@ public sealed class GameSaveSystem : MonoBehaviour
 
                 selectedItemIndex = inventory != null
                     ? inventory.SelectedItemIndex
-                    : -1
+                    : -1,
+
+                sprintStamina = sprintController != null
+                    ? sprintController.CurrentStamina
+                    : 0f,
+
+                scentCooldownRemaining = scentTrailPower != null
+                    ? scentTrailPower.CooldownRemaining
+                    : 0f
             };
 
             foreach (Transform sceneTransform in sceneTransforms)
@@ -264,11 +273,17 @@ public sealed class GameSaveSystem : MonoBehaviour
 
                 savedObject.behavioursEnabled =
                     new bool[behaviours.Length];
+                savedObject.behaviourStates = CaptureComponentStates(behaviours);
 
                 for (int i = 0; i < behaviours.Length; i++)
                 {
-                    savedObject.behavioursEnabled[i] =
-                        behaviours[i].enabled;
+                    bool enabled = Time.timeScale <= 0f &&
+                        (behaviours[i] is FirstPersonController ||
+                         behaviours[i] is PlayerInventory)
+                            ? true
+                            : behaviours[i].enabled;
+                    savedObject.behavioursEnabled[i] = enabled;
+                    savedObject.behaviourStates[i].enabled = enabled;
                 }
 
                 Collider[] colliders =
@@ -276,6 +291,7 @@ public sealed class GameSaveSystem : MonoBehaviour
 
                 savedObject.collidersEnabled =
                     new bool[colliders.Length];
+                savedObject.colliderStates = CaptureComponentStates(colliders);
 
                 for (int i = 0; i < colliders.Length; i++)
                 {
@@ -288,6 +304,7 @@ public sealed class GameSaveSystem : MonoBehaviour
 
                 savedObject.renderersEnabled =
                     new bool[renderers.Length];
+                savedObject.rendererStates = CaptureComponentStates(renderers);
 
                 for (int i = 0; i < renderers.Length; i++)
                 {
@@ -319,10 +336,7 @@ public sealed class GameSaveSystem : MonoBehaviour
             if (!string.IsNullOrEmpty(directory))
                 Directory.CreateDirectory(directory);
 
-            File.WriteAllText(
-                SavePath,
-                JsonUtility.ToJson(data, true)
-            );
+            WriteSaveFile(JsonUtility.ToJson(data, true));
         }
         catch (Exception exception)
         {
@@ -344,12 +358,13 @@ public sealed class GameSaveSystem : MonoBehaviour
 
         try
         {
+            RefreshSceneObjectRegistry(false);
             GameSaveData data = JsonUtility.FromJson<GameSaveData>(
                 File.ReadAllText(SavePath)
             );
 
             if (data == null ||
-                (data.version != 1 && data.version != 2))
+                (data.version < 1 || data.version > 3))
             {
                 Debug.LogWarning(
                     "Save file is empty or uses an unsupported version.",
@@ -538,9 +553,19 @@ public sealed class GameSaveSystem : MonoBehaviour
                 );
             }
 
+            Physics.SyncTransforms();
+
+            PlacementProgressTracker progressTracker =
+                FindAnyObjectByType<PlacementProgressTracker>();
+
+            // Recompute skill bonuses before rebuilding inventory, since perks
+            // can increase the amount the player is allowed to carry.
+            if (progressTracker != null)
+                progressTracker.RefreshAfterLoad();
+
             // Restore the player's explicit pose even without inventory.
             CharacterController characterController =
-                GetComponent<CharacterController>();
+                playerTransform.GetComponent<CharacterController>();
 
             bool characterWasEnabled =
                 characterController != null &&
@@ -551,7 +576,7 @@ public sealed class GameSaveSystem : MonoBehaviour
 
             try
             {
-                transform.SetPositionAndRotation(
+                playerTransform.SetPositionAndRotation(
                     data.playerPosition,
                     data.playerRotation
                 );
@@ -579,6 +604,7 @@ public sealed class GameSaveSystem : MonoBehaviour
                         data.cameraLocalRotation
                     );
                 }
+
             }
             finally
             {
@@ -587,6 +613,12 @@ public sealed class GameSaveSystem : MonoBehaviour
             }
 
             Physics.SyncTransforms();
+
+            if (sprintController != null && data.version >= 3)
+                sprintController.RestoreCurrentStamina(data.sprintStamina);
+
+            if (scentTrailPower != null && data.version >= 3)
+                scentTrailPower.RestoreCooldownRemaining(data.scentCooldownRemaining);
 
             nextAutosaveTime =
                 Time.unscaledTime + AutosaveIntervalSeconds;
@@ -618,13 +650,181 @@ public sealed class GameSaveSystem : MonoBehaviour
         return depth;
     }
 
+    private void WriteSaveFile(string contents)
+    {
+        string temporaryPath = SavePath + ".tmp";
+        string backupPath = SavePath + ".bak";
+        File.WriteAllText(temporaryPath, contents);
+
+        if (!File.Exists(SavePath))
+        {
+            File.Move(temporaryPath, SavePath);
+            return;
+        }
+
+        if (File.Exists(backupPath))
+            File.Delete(backupPath);
+
+        try
+        {
+            File.Replace(temporaryPath, SavePath, backupPath);
+        }
+        catch (PlatformNotSupportedException)
+        {
+            File.Delete(SavePath);
+            File.Move(temporaryPath, SavePath);
+        }
+    }
+
+    private void RefreshSceneObjectRegistry(bool includeAllSceneObjects)
+    {
+        Transform[] foundTransforms = FindObjectsByType<Transform>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
+
+        foreach (Transform sceneTransform in foundTransforms)
+        {
+            if (sceneTransform == null || idsByTransform.ContainsKey(sceneTransform))
+                continue;
+
+            // Later-created gameplay objects are currently created by the shelf spawner.
+            // Register their complete hierarchies, but don't accidentally save runtime UI/VFX.
+            if (!includeAllSceneObjects &&
+                sceneTransform.GetComponentInParent<CarryableItem>() == null)
+                continue;
+
+            string id = GetStableSceneId(sceneTransform);
+            if (string.IsNullOrEmpty(id))
+                continue;
+
+            if (transformsById.TryGetValue(id, out Transform duplicate) && duplicate != null)
+            {
+                Debug.LogWarning($"Duplicate persistent scene ID '{id}'.", sceneTransform);
+                continue;
+            }
+
+            idsByTransform[sceneTransform] = id;
+            transformsById[id] = sceneTransform;
+        }
+
+        var registered = new List<Transform>(idsByTransform.Count);
+        var destroyed = new List<Transform>();
+        foreach (KeyValuePair<Transform, string> entry in idsByTransform)
+        {
+            if (entry.Key == null)
+                destroyed.Add(entry.Key);
+            else
+                registered.Add(entry.Key);
+        }
+
+        foreach (Transform deadTransform in destroyed)
+            idsByTransform.Remove(deadTransform);
+
+        var staleIds = new List<string>();
+        foreach (KeyValuePair<string, Transform> entry in transformsById)
+            if (entry.Value == null)
+                staleIds.Add(entry.Key);
+        foreach (string staleId in staleIds)
+            transformsById.Remove(staleId);
+
+        sceneTransforms = registered.ToArray();
+    }
+
+    private static string GetStableSceneId(Transform target)
+    {
+        CarryableItem item = target.GetComponentInParent<CarryableItem>();
+        if (item == null)
+            return PersistentSceneId.FromTransform(target);
+
+        if (target == item.transform)
+            return item.PersistentId;
+
+        var relativeHierarchy = new Stack<Transform>();
+        for (Transform current = target; current != item.transform; current = current.parent)
+            relativeHierarchy.Push(current);
+
+        var builder = new StringBuilder(item.PersistentId);
+        while (relativeHierarchy.Count > 0)
+        {
+            Transform current = relativeHierarchy.Pop();
+            builder.Append("/child/")
+                .Append(current.GetSiblingIndex())
+                .Append(':')
+                .Append(current.name);
+        }
+
+        return builder.ToString();
+    }
+
+    private static SavedComponentState[] CaptureComponentStates(Component[] components)
+    {
+        var states = new SavedComponentState[components.Length];
+        for (int i = 0; i < components.Length; i++)
+        {
+            states[i] = new SavedComponentState
+            {
+                key = GetComponentKey(components, i),
+                enabled = GetComponentEnabled(components[i])
+            };
+        }
+        return states;
+    }
+
+    private static string GetComponentKey(Component[] components, int index)
+    {
+        Type type = components[index].GetType();
+        int occurrence = 0;
+        for (int i = 0; i < index; i++)
+            if (components[i].GetType() == type)
+                occurrence++;
+        return type.AssemblyQualifiedName + "#" + occurrence;
+    }
+
+    private static bool GetComponentEnabled(Component component)
+    {
+        if (component is Behaviour behaviour) return behaviour.enabled;
+        if (component is Collider collider) return collider.enabled;
+        if (component is Renderer renderer) return renderer.enabled;
+        return true;
+    }
+
+    private static void RestoreComponentStates(Component[] components, SavedComponentState[] states)
+    {
+        if (states == null)
+            return;
+
+        var statesByKey = new Dictionary<string, bool>();
+        foreach (SavedComponentState state in states)
+            if (state != null && !string.IsNullOrEmpty(state.key))
+                statesByKey[state.key] = state.enabled;
+
+        for (int i = 0; i < components.Length; i++)
+        {
+            if (!statesByKey.TryGetValue(GetComponentKey(components, i), out bool enabled))
+                continue;
+
+            if (components[i] is GameSaveSystem || components[i] is PauseMenuController)
+                continue;
+            SetComponentEnabled(components[i], enabled);
+        }
+    }
+
+    private static void SetComponentEnabled(Component component, bool enabled)
+    {
+        if (component is Behaviour behaviour) behaviour.enabled = enabled;
+        else if (component is Collider collider) collider.enabled = enabled;
+        else if (component is Renderer renderer) renderer.enabled = enabled;
+    }
+
     private static void RestoreEnabledStates(
         GameObject target,
         SavedSceneObject savedObject)
     {
         Behaviour[] behaviours = target.GetComponents<Behaviour>();
 
-        for (int i = 0;
+        if (savedObject.behaviourStates != null)
+            RestoreComponentStates(behaviours, savedObject.behaviourStates);
+        else for (int i = 0;
              savedObject.behavioursEnabled != null &&
              i < behaviours.Length &&
              i < savedObject.behavioursEnabled.Length;
@@ -643,7 +843,9 @@ public sealed class GameSaveSystem : MonoBehaviour
 
         Collider[] colliders = target.GetComponents<Collider>();
 
-        for (int i = 0;
+        if (savedObject.colliderStates != null)
+            RestoreComponentStates(colliders, savedObject.colliderStates);
+        else for (int i = 0;
              savedObject.collidersEnabled != null &&
              i < colliders.Length &&
              i < savedObject.collidersEnabled.Length;
@@ -655,7 +857,9 @@ public sealed class GameSaveSystem : MonoBehaviour
 
         Renderer[] renderers = target.GetComponents<Renderer>();
 
-        for (int i = 0;
+        if (savedObject.rendererStates != null)
+            RestoreComponentStates(renderers, savedObject.rendererStates);
+        else for (int i = 0;
              savedObject.renderersEnabled != null &&
              i < renderers.Length &&
              i < savedObject.renderersEnabled.Length;

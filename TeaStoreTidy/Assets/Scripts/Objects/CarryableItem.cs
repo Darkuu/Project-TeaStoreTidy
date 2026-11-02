@@ -22,6 +22,12 @@ public sealed class CarryableItem : MonoBehaviour
         }
     }
 
+    public void SetPersistentId(string id)
+    {
+        if (!string.IsNullOrWhiteSpace(id))
+            persistentId = id;
+    }
+
     private void Awake()
     {
         CacheComponents();

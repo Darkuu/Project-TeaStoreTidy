@@ -372,6 +372,18 @@ public sealed class PlacementProgressTracker : MonoBehaviour
         UpdateHudText();
     }
 
+    /// <summary>Rebuilds derived placement, sorting, and skill progress after a save is loaded.</summary>
+    public void RefreshAfterLoad()
+    {
+        placementSpots = FindObjectsByType<PlacementSpot>(
+            FindObjectsInactive.Exclude,
+            FindObjectsSortMode.None);
+        RefreshProgress();
+        RefreshSortingProgress();
+        RefreshSkillProgress();
+        nextRefreshTime = Time.unscaledTime + Mathf.Max(0.1f, refreshInterval);
+    }
+
     private void RefreshSortingProgress()
     {
         if (sortingProgressText == null)

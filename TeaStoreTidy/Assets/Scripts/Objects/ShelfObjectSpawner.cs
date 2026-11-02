@@ -21,6 +21,7 @@ public sealed class ShelfObjectSpawner : MonoBehaviour
     [SerializeField] private bool spawnOnStart = true;
     [SerializeField] private bool includeInactivePlacementSpots;
     [SerializeField] private ShelfItemSpawnGroup[] itemGroups;
+    private readonly Dictionary<string, int> nextSpawnIndexByTag = new Dictionary<string, int>();
 
     private void Start()
     {
@@ -93,7 +94,7 @@ public sealed class ShelfObjectSpawner : MonoBehaviour
                 continue;
             }
 
-            SpawnItems(group, missingCount, reservedPositions);
+            SpawnItems(group, missingCount, reservedPositions, itemTag);
         }
 
         foreach (KeyValuePair<string, int> required in requiredByTag)
@@ -103,8 +104,12 @@ public sealed class ShelfObjectSpawner : MonoBehaviour
         }
     }
 
-    private void SpawnItems(ShelfItemSpawnGroup group, int count, List<Vector3> reservedPositions)
+    private void SpawnItems(ShelfItemSpawnGroup group, int count, List<Vector3> reservedPositions, string itemTag)
     {
+        int firstSpawnIndex = nextSpawnIndexByTag.TryGetValue(itemTag, out int nextIndex)
+            ? nextIndex
+            : 0;
+
         Transform[] points = group.spawnPoints;
         int validPointCount = 0;
         foreach (Transform point in points)
@@ -116,6 +121,8 @@ public sealed class ShelfObjectSpawner : MonoBehaviour
             Debug.LogWarning($"All spawn points are empty for prefab '{group.prefab.name}'.", this);
             return;
         }
+
+        nextSpawnIndexByTag[itemTag] = firstSpawnIndex + count;
 
         var validPoints = new List<Transform>(validPointCount);
         foreach (Transform point in points)
@@ -134,7 +141,9 @@ public sealed class ShelfObjectSpawner : MonoBehaviour
                 UnityEngine.Random.Range(0f, 360f),
                 UnityEngine.Random.Range(0f, 360f));
 
-            Instantiate(group.prefab, worldPosition, worldRotation);
+            CarryableItem spawnedItem = Instantiate(group.prefab, worldPosition, worldRotation);
+            spawnedItem.SetPersistentId(
+                $"{PersistentSceneId.FromTransform(transform)}/spawn/{itemTag}/{firstSpawnIndex + itemIndex}");
             reservedPositions.Add(worldPosition);
         }
     }

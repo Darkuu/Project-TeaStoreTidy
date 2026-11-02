@@ -33,6 +33,14 @@ public sealed class ScentTrailPower : MonoBehaviour
     private int extraTrails;
     private float EffectiveCooldown => Mathf.Max(0.1f, cooldownDuration - cooldownReduction);
 
+    public float CooldownRemaining => Mathf.Max(0f, nextUseTime - Time.time);
+
+    public void RestoreCooldownRemaining(float remaining)
+    {
+        nextUseTime = Time.time + Mathf.Clamp(remaining, 0f, EffectiveCooldown);
+        UpdateAbilityDisplay();
+    }
+
     private void Awake()
     {
         CachePlayerComponents();

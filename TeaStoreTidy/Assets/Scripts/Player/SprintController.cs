@@ -60,6 +60,13 @@ public sealed class SprintController : MonoBehaviour
         }
     }
 
+    public void RestoreCurrentStamina(float value)
+    {
+        InitializeIfNeeded();
+        currentStamina = Mathf.Clamp(value, 0f, MaximumStamina);
+        UpdateStaminaBar();
+    }
+
     public float RechargeRate =>
         Mathf.Max(0f, sprintRechargeRate + rechargeBonus);
 
