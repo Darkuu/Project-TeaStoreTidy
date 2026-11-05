@@ -27,6 +27,11 @@ public sealed class PlayerInventory : MonoBehaviour
 
     [SerializeField] private Vector3 heldLocalEulerAngles;
 
+    [Header("Item Switch Feedback")]
+    [SerializeField, Min(0f)] private float swapPopHeight = 0.05f;
+    [SerializeField, Min(0f)] private float swapScalePulse = 0.03f;
+    [SerializeField, Min(0.01f)] private float swapAnimationDuration = 0.28f;
+
     private int skillCapacityBonus;
 
     private InputAction interactAction;
@@ -37,6 +42,11 @@ public sealed class PlayerInventory : MonoBehaviour
         new List<CarryableItem>(6);
 
     private int selectedItemIndex = -1;
+
+    private CarryableItem animatingItem;
+    private Vector3 heldBaseLocalPosition;
+    private Vector3 heldBaseLocalScale;
+    private float swapAnimationTime;
 
     public int SelectedItemIndex => selectedItemIndex;
 
@@ -142,10 +152,14 @@ public sealed class PlayerInventory : MonoBehaviour
         interactAction?.Disable();
         dropAction?.Disable();
         cycleItemsAction?.Disable();
+
+        ResetHeldItemPop();
     }
 
     private void Update()
     {
+        UpdateHeldItemPop();
+
         if (playerController != null && playerController.PowersMenuOpen)
             return;
 
@@ -261,6 +275,9 @@ public sealed class PlayerInventory : MonoBehaviour
 
     private void UpdateSelectedItemView()
     {
+        // Restore any previous item's transform before switching.
+        ResetHeldItemPop();
+
         for (int i = 0; i < carriedItems.Count; i++)
         {
             CarryableItem item = carriedItems[i];
@@ -281,6 +298,56 @@ public sealed class PlayerInventory : MonoBehaviour
                 item.Stow();
             }
         }
+
+        CarryableItem selected = SelectedItem;
+
+        if (selected != null)
+        {
+            animatingItem = selected;
+            heldBaseLocalPosition = selected.transform.localPosition;
+            heldBaseLocalScale = selected.transform.localScale;
+            swapAnimationTime = 0f;
+        }
+    }
+
+    private void UpdateHeldItemPop()
+    {
+        if (animatingItem == null)
+            return;
+
+        float duration = Mathf.Max(0.01f, swapAnimationDuration);
+        swapAnimationTime += Time.unscaledDeltaTime;
+
+        float t = Mathf.Clamp01(swapAnimationTime / duration);
+
+        // Ease the animation in and out so it doesn't snap at either end.
+        float easedT = Mathf.SmoothStep(0f, 1f, t);
+        float pulse = Mathf.Sin(easedT * Mathf.PI);
+
+        Transform itemTransform = animatingItem.transform;
+
+        itemTransform.localPosition =
+            heldBaseLocalPosition +
+            Vector3.up * (swapPopHeight * pulse);
+
+        itemTransform.localScale =
+            heldBaseLocalScale * (1f + swapScalePulse * pulse);
+
+        if (t >= 1f)
+            ResetHeldItemPop();
+    }
+
+    private void ResetHeldItemPop()
+    {
+        if (animatingItem != null)
+        {
+            Transform itemTransform = animatingItem.transform;
+            itemTransform.localPosition = heldBaseLocalPosition;
+            itemTransform.localScale = heldBaseLocalScale;
+        }
+
+        animatingItem = null;
+        swapAnimationTime = 0f;
     }
 
     public List<string> GetCarriedItemIds()
@@ -317,6 +384,7 @@ public sealed class PlayerInventory : MonoBehaviour
         int savedSelectedIndex,
         Dictionary<string, CarryableItem> itemsById)
     {
+        ResetHeldItemPop();
         carriedItems.Clear();
 
         if (itemIds != null && itemsById != null)
